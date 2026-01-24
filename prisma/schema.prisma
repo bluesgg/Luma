@@ -1,0 +1,326 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+// ==================== User Authentication ====================
+
+model User {
+  id                  String    @id @default(cuid())
+  email               String    @unique
+  passwordHash        String    @map("password_hash")
+  emailConfirmedAt    DateTime? @map("email_confirmed_at")
+  lastLoginAt         DateTime? @map("last_login_at")
+  failedLoginAttempts Int       @default(0) @map("failed_login_attempts")
+  lockedUntil         DateTime? @map("locked_until")
+  createdAt           DateTime  @default(now()) @map("created_at")
+  updatedAt           DateTime  @updatedAt @map("updated_at")
+
+  // Relations
+  courses            Course[]
+  quotas             Quota[]
+  quotaLogs          QuotaLog[]
+  readingProgress    ReadingProgress[]
+  preference         UserPreference?
+  verificationTokens VerificationToken[]
+  accessLogs         AccessLog[]
+  aiUsageLogs        AIUsageLog[]
+
+  @@map("users")
+}
+
+model VerificationToken {
+  id        String                @id @default(cuid())
+  userId    String                @map("user_id")
+  token     String                @unique
+  type      VerificationTokenType
+  expiresAt DateTime              @map("expires_at")
+  createdAt DateTime              @default(now()) @map("created_at")
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([token])
+  @@map("verification_tokens")
+}
+
+enum VerificationTokenType {
+  EMAIL_VERIFY
+  PASSWORD_RESET
+}
+
+// ==================== Course Management ====================
+
+model Course {
+  id        String   @id @default(cuid())
+  userId    String   @map("user_id")
+  name      String   @db.VarChar(50)
+  school    String?  @db.VarChar(100)
+  term      String?  @db.VarChar(50)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  user  User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  files File[]
+
+  @@index([userId])
+  @@map("courses")
+}
+
+// ==================== File Management ====================
+
+model File {
+  id          String     @id @default(cuid())
+  courseId    String     @map("course_id")
+  name        String     @db.VarChar(255)
+  type        FileType   @default(LECTURE)
+  pageCount   Int?       @map("page_count")
+  fileSize    Int        @map("file_size") // in bytes
+  isScanned   Boolean    @default(false) @map("is_scanned")
+  status      FileStatus @default(UPLOADING)
+  storagePath String     @map("storage_path")
+  createdAt   DateTime   @default(now()) @map("created_at")
+
+  // Relations
+  course          Course            @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  explanations    Explanation[]
+  imageRegions    ImageRegion[]
+  qas             QA[]
+  readingProgress ReadingProgress[]
+
+  @@unique([courseId, name])
+  @@index([courseId])
+  @@map("files")
+}
+
+enum FileType {
+  LECTURE
+  HOMEWORK
+  EXAM
+  OTHER
+}
+
+enum FileStatus {
+  UPLOADING
+  PROCESSING
+  READY
+  FAILED
+}
+
+// ==================== PDF Learning (Core) ====================
+
+model Explanation {
+  id         String   @id @default(cuid())
+  fileId     String   @map("file_id")
+  pageNumber Int      @map("page_number")
+  content    String   @db.Text
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  // Relations
+  file File @relation(fields: [fileId], references: [id], onDelete: Cascade)
+
+  @@unique([fileId, pageNumber])
+  @@index([fileId])
+  @@map("explanations")
+}
+
+model ImageRegion {
+  id          String   @id @default(cuid())
+  fileId      String   @map("file_id")
+  pageNumber  Int      @map("page_number")
+  bbox        Json     // { x, y, width, height }
+  explanation String?  @db.Text
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  // Relations
+  file File @relation(fields: [fileId], references: [id], onDelete: Cascade)
+
+  @@index([fileId, pageNumber])
+  @@map("image_regions")
+}
+
+model QA {
+  id        String   @id @default(cuid())
+  fileId    String   @map("file_id")
+  question  String   @db.Text
+  answer    String   @db.Text
+  pageRefs  Json?    @map("page_refs") // Array of page numbers referenced
+  createdAt DateTime @default(now()) @map("created_at")
+
+  // Relations
+  file File @relation(fields: [fileId], references: [id], onDelete: Cascade)
+
+  @@index([fileId])
+  @@map("qas")
+}
+
+model ReadingProgress {
+  id         String   @id @default(cuid())
+  userId     String   @map("user_id")
+  fileId     String   @map("file_id")
+  pageNumber Int      @map("page_number")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  file File @relation(fields: [fileId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, fileId])
+  @@index([userId])
+  @@map("reading_progress")
+}
+
+// ==================== Quota Management ====================
+
+model Quota {
+  id      String      @id @default(cuid())
+  userId  String      @map("user_id")
+  bucket  QuotaBucket
+  used    Int         @default(0)
+  limit   Int
+  resetAt DateTime    @map("reset_at")
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, bucket])
+  @@index([userId])
+  @@map("quotas")
+}
+
+enum QuotaBucket {
+  LEARNING_INTERACTIONS
+  AUTO_EXPLAIN
+}
+
+model QuotaLog {
+  id        String          @id @default(cuid())
+  userId    String          @map("user_id")
+  bucket    QuotaBucket
+  change    Int             // positive or negative
+  reason    QuotaLogReason
+  createdAt DateTime        @default(now()) @map("created_at")
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([createdAt])
+  @@map("quota_logs")
+}
+
+enum QuotaLogReason {
+  SYSTEM_RESET
+  ADMIN_ADJUST
+  CONSUME
+  REFUND
+}
+
+// ==================== User Settings ====================
+
+model UserPreference {
+  id            String   @id @default(cuid())
+  userId        String   @unique @map("user_id")
+  uiLocale      String   @default("en") @map("ui_locale") @db.VarChar(10)
+  explainLocale String   @default("en") @map("explain_locale") @db.VarChar(10)
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_preferences")
+}
+
+// ==================== Admin Management ====================
+
+model Admin {
+  id           String     @id @default(cuid())
+  email        String     @unique
+  passwordHash String     @map("password_hash")
+  role         AdminRole  @default(ADMIN)
+  createdAt    DateTime   @default(now()) @map("created_at")
+  disabledAt   DateTime?  @map("disabled_at")
+
+  // Relations
+  auditLogs AuditLog[]
+
+  @@map("admins")
+}
+
+enum AdminRole {
+  SUPER_ADMIN
+  ADMIN
+}
+
+// ==================== Logging ====================
+
+model AccessLog {
+  id         String         @id @default(cuid())
+  userId     String         @map("user_id")
+  actionType AccessLogType  @map("action_type")
+  metadata   Json?          // Additional context
+  timestamp  DateTime       @default(now())
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([timestamp])
+  @@index([actionType])
+  @@map("access_logs")
+}
+
+enum AccessLogType {
+  LOGIN
+  VIEW_FILE
+  USE_QA
+  USE_EXPLAIN
+}
+
+model AIUsageLog {
+  id           String         @id @default(cuid())
+  userId       String         @map("user_id")
+  actionType   AIActionType   @map("action_type")
+  inputTokens  Int            @map("input_tokens")
+  outputTokens Int            @map("output_tokens")
+  model        String         @db.VarChar(50)
+  createdAt    DateTime       @default(now()) @map("created_at")
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([createdAt])
+  @@map("ai_usage_logs")
+}
+
+enum AIActionType {
+  QA
+  EXPLAIN
+}
+
+model AuditLog {
+  id           String   @id @default(cuid())
+  adminId      String   @map("admin_id")
+  action       String   @db.VarChar(100)
+  targetUserId String?  @map("target_user_id")
+  details      Json?
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  // Relations
+  admin Admin @relation(fields: [adminId], references: [id], onDelete: Cascade)
+
+  @@index([adminId])
+  @@index([createdAt])
+  @@map("audit_logs")
+}

@@ -1,0 +1,127 @@
+{
+  "common": {
+    "loading": "Loading...",
+    "error": "Error",
+    "success": "Success",
+    "cancel": "Cancel",
+    "confirm": "Confirm",
+    "save": "Save",
+    "delete": "Delete",
+    "edit": "Edit",
+    "create": "Create",
+    "back": "Back",
+    "next": "Next",
+    "submit": "Submit",
+    "search": "Search",
+    "noResults": "No results found"
+  },
+  "auth": {
+    "login": "Log in",
+    "logout": "Log out",
+    "register": "Sign up",
+    "email": "Email",
+    "password": "Password",
+    "confirmPassword": "Confirm Password",
+    "forgotPassword": "Forgot password?",
+    "resetPassword": "Reset Password",
+    "rememberMe": "Remember me",
+    "verifyEmail": "Verify Email",
+    "resendVerification": "Resend verification email",
+    "loginTitle": "Welcome back",
+    "loginSubtitle": "Sign in to your account",
+    "registerTitle": "Create an account",
+    "registerSubtitle": "Start your learning journey",
+    "errors": {
+      "invalidCredentials": "Invalid email or password",
+      "emailNotVerified": "Please verify your email before logging in",
+      "accountLocked": "Account locked. Please try again later",
+      "emailExists": "An account with this email already exists",
+      "passwordTooShort": "Password must be at least 8 characters",
+      "passwordMismatch": "Passwords do not match"
+    },
+    "messages": {
+      "verificationSent": "Verification email sent. Please check your inbox",
+      "passwordResetSent": "Password reset link sent to your email",
+      "passwordResetSuccess": "Password reset successfully. Please log in",
+      "emailVerified": "Email verified successfully. You can now log in"
+    }
+  },
+  "courses": {
+    "title": "My Courses",
+    "create": "Create Course",
+    "name": "Course Name",
+    "school": "School",
+    "term": "Term",
+    "files": "Files",
+    "noCoursers": "No courses yet. Create your first course!",
+    "deleteConfirm": "Are you sure you want to delete this course? This will also delete all files and AI data associated with it.",
+    "deleteInput": "Type the course name to confirm deletion",
+    "errors": {
+      "limitExceeded": "You have reached the maximum number of courses (6). Please delete a course before creating a new one",
+      "notFound": "Course not found",
+      "nameTooLong": "Course name must be 50 characters or less"
+    }
+  },
+  "files": {
+    "title": "Files",
+    "upload": "Upload PDF",
+    "uploadDrag": "Drag and drop PDF files here, or click to select",
+    "noFiles": "No files yet. Upload your first PDF!",
+    "processing": "Processing...",
+    "ready": "Ready",
+    "failed": "Failed",
+    "scannedWarning": "This file appears to be a scanned document. AI features are disabled.",
+    "deleteConfirm": "Are you sure you want to delete this file?",
+    "errors": {
+      "tooLarge": "File is too large. Maximum size is 200MB",
+      "tooManyPages": "File has too many pages. Maximum is 500 pages",
+      "duplicateName": "A file with this name already exists. Please rename or delete the existing file",
+      "limitExceeded": "Maximum files per course reached (30)",
+      "storageExceeded": "Storage limit exceeded (5GB)",
+      "invalidType": "Only PDF files are allowed"
+    }
+  },
+  "reader": {
+    "page": "Page",
+    "of": "of",
+    "zoom": "Zoom",
+    "explain": "Auto Explain",
+    "askQuestion": "Ask a question...",
+    "send": "Send",
+    "explanation": "Explanation",
+    "qa": "Q&A",
+    "scannedDisabled": "AI features are disabled for scanned documents",
+    "errors": {
+      "quotaExceeded": "Monthly quota exceeded. Please try again next month"
+    }
+  },
+  "quota": {
+    "title": "Usage Quota",
+    "learningInteractions": "Q&A Interactions",
+    "autoExplain": "Auto Explanations",
+    "used": "Used",
+    "remaining": "Remaining",
+    "resetsOn": "Resets on",
+    "exhausted": "Monthly quota exhausted"
+  },
+  "settings": {
+    "title": "Settings",
+    "language": "Language Settings",
+    "uiLanguage": "Interface Language",
+    "explainLanguage": "AI Explanation Language",
+    "quotaDetails": "Quota Details"
+  },
+  "admin": {
+    "login": "Admin Login",
+    "dashboard": "Dashboard",
+    "overview": "Overview",
+    "users": "Users",
+    "access": "Access Logs",
+    "cost": "Cost Monitor",
+    "workers": "Workers",
+    "totalUsers": "Total Users",
+    "totalCourses": "Total Courses",
+    "totalFiles": "Total Files",
+    "adjustQuota": "Adjust Quota"
+  }
+}

@@ -1,0 +1,127 @@
+{
+  "common": {
+    "loading": "加载中...",
+    "error": "错误",
+    "success": "成功",
+    "cancel": "取消",
+    "confirm": "确认",
+    "save": "保存",
+    "delete": "删除",
+    "edit": "编辑",
+    "create": "创建",
+    "back": "返回",
+    "next": "下一步",
+    "submit": "提交",
+    "search": "搜索",
+    "noResults": "未找到结果"
+  },
+  "auth": {
+    "login": "登录",
+    "logout": "退出登录",
+    "register": "注册",
+    "email": "邮箱",
+    "password": "密码",
+    "confirmPassword": "确认密码",
+    "forgotPassword": "忘记密码？",
+    "resetPassword": "重置密码",
+    "rememberMe": "记住我",
+    "verifyEmail": "验证邮箱",
+    "resendVerification": "重新发送验证邮件",
+    "loginTitle": "欢迎回来",
+    "loginSubtitle": "登录您的账户",
+    "registerTitle": "创建账户",
+    "registerSubtitle": "开始您的学习之旅",
+    "errors": {
+      "invalidCredentials": "邮箱或密码错误",
+      "emailNotVerified": "请先验证您的邮箱",
+      "accountLocked": "账户已锁定，请稍后再试",
+      "emailExists": "该邮箱已被注册",
+      "passwordTooShort": "密码至少需要8个字符",
+      "passwordMismatch": "两次输入的密码不一致"
+    },
+    "messages": {
+      "verificationSent": "验证邮件已发送，请查收邮箱",
+      "passwordResetSent": "密码重置链接已发送至您的邮箱",
+      "passwordResetSuccess": "密码重置成功，请登录",
+      "emailVerified": "邮箱验证成功，您现在可以登录了"
+    }
+  },
+  "courses": {
+    "title": "我的课程",
+    "create": "创建课程",
+    "name": "课程名称",
+    "school": "学校",
+    "term": "学期",
+    "files": "文件",
+    "noCoursers": "暂无课程，创建您的第一门课程吧！",
+    "deleteConfirm": "确定要删除这门课程吗？这将同时删除所有关联的文件和AI数据。",
+    "deleteInput": "输入课程名称以确认删除",
+    "errors": {
+      "limitExceeded": "已达课程数量上限 (6门)，请删除后再创建",
+      "notFound": "课程不存在",
+      "nameTooLong": "课程名称不能超过50个字符"
+    }
+  },
+  "files": {
+    "title": "文件",
+    "upload": "上传 PDF",
+    "uploadDrag": "拖拽 PDF 文件到此处，或点击选择",
+    "noFiles": "暂无文件，上传您的第一个 PDF 吧！",
+    "processing": "处理中...",
+    "ready": "就绪",
+    "failed": "失败",
+    "scannedWarning": "该文件为扫描件，AI 功能已禁用。",
+    "deleteConfirm": "确定要删除这个文件吗？",
+    "errors": {
+      "tooLarge": "文件过大，最大支持 200MB",
+      "tooManyPages": "文件页数过多，最大支持 500 页",
+      "duplicateName": "同名文件已存在，请先删除或重命名后再上传",
+      "limitExceeded": "已达单课程文件数上限 (30个)",
+      "storageExceeded": "存储空间已满 (5GB)",
+      "invalidType": "仅支持 PDF 文件"
+    }
+  },
+  "reader": {
+    "page": "第",
+    "of": "页，共",
+    "zoom": "缩放",
+    "explain": "自动讲解",
+    "askQuestion": "输入您的问题...",
+    "send": "发送",
+    "explanation": "讲解",
+    "qa": "问答",
+    "scannedDisabled": "扫描件文档暂不支持 AI 功能",
+    "errors": {
+      "quotaExceeded": "本月配额已用尽，请下月再试"
+    }
+  },
+  "quota": {
+    "title": "使用配额",
+    "learningInteractions": "问答次数",
+    "autoExplain": "自动讲解次数",
+    "used": "已使用",
+    "remaining": "剩余",
+    "resetsOn": "重置日期",
+    "exhausted": "本月配额已用尽"
+  },
+  "settings": {
+    "title": "设置",
+    "language": "语言设置",
+    "uiLanguage": "界面语言",
+    "explainLanguage": "AI 讲解语言",
+    "quotaDetails": "配额详情"
+  },
+  "admin": {
+    "login": "管理员登录",
+    "dashboard": "控制台",
+    "overview": "概览",
+    "users": "用户",
+    "access": "访问日志",
+    "cost": "成本监控",
+    "workers": "任务队列",
+    "totalUsers": "总用户数",
+    "totalCourses": "总课程数",
+    "totalFiles": "总文件数",
+    "adjustQuota": "调整配额"
+  }
+}
