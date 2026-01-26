@@ -21,7 +21,7 @@ AI 驱动的 PDF 学习助手，帮助学生高效理解课程资料。
 ## 目录结构
 
 ```
-studentaid-web/
+luma-web/
 ├── src/
 │   ├── app/                    # Next.js App Router
 │   │   ├── (auth)/             # 认证相关页面 (登录/注册/重置密码)

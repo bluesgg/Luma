@@ -1,4 +1,4 @@
-# StudentAid Web - 产品需求文档 (PRD)
+# Luma Web - 产品需求文档 (PRD)
 
 > **版本**: v1.1 MVP
 > **最后更新**: 2026-01-19

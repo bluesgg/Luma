@@ -1,0 +1,24 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npx prisma generate:*)",
+      "Bash(python scripts/search.py:*)",
+      "Bash(python3:*)",
+      "Bash(PYTHONIOENCODING=utf-8 python:*)",
+      "Bash(npx tsc:*)",
+      "Bash(npm run typecheck:*)",
+      "Bash(pnpm --version:*)",
+      "Bash(npm run build:*)",
+      "Read(//c/Users/29910/.claude/plugins/cache/everything-claude-code/everything-claude-code/660e0d3badd3/skills/continuous-learning/**)",
+      "Bash(pnpm build:*)",
+      "Bash(npm install:*)",
+      "Bash(pnpm tsc:*)",
+      "Bash(pnpm typecheck:*)",
+      "Bash(git rev-parse:*)"
+    ],
+    "additionalDirectories": [
+      "C:\\Users\\29910\\.claude\\skills\\learned",
+      "e:\\cursor_project\\Luma\\tests\\components"
+    ]
+  }
+}

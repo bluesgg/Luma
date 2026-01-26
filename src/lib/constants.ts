@@ -1,69 +1,119 @@
-// ==================== File Limits ====================
+// ============================================
+// Authentication Constants
+// ============================================
 
-export const FILE_LIMITS = {
-  MAX_FILE_SIZE: 200 * 1024 * 1024, // 200MB in bytes
+export const AUTH = {
+  PASSWORD_MIN_LENGTH: 8,
+  SESSION_DURATION_DEFAULT: 7 * 24 * 60 * 60, // 7 days in seconds
+  SESSION_DURATION_REMEMBER: 30 * 24 * 60 * 60, // 30 days in seconds
+  VERIFICATION_LINK_EXPIRY: 24 * 60 * 60, // 24 hours in seconds
+  RESET_LINK_EXPIRY: 24 * 60 * 60, // 24 hours in seconds
+  EMAIL_RATE_LIMIT: 5, // emails per 15 minutes
+  EMAIL_RATE_WINDOW: 15 * 60, // 15 minutes in seconds
+  LOGIN_LOCKOUT_ATTEMPTS: 5,
+  LOGIN_LOCKOUT_DURATION: 30 * 60, // 30 minutes in seconds
+} as const
+
+// ============================================
+// Quota Constants
+// ============================================
+
+export const QUOTA = {
+  LEARNING_INTERACTIONS_LIMIT: 150,
+  AUTO_EXPLAIN_LIMIT: 300,
+} as const
+
+// ============================================
+// Storage Constants
+// ============================================
+
+export const STORAGE = {
+  MAX_FILE_SIZE: 200 * 1024 * 1024, // 200MB
   MAX_PAGE_COUNT: 500,
   MAX_FILES_PER_COURSE: 30,
-  MAX_STORAGE_PER_USER: 5 * 1024 * 1024 * 1024, // 5GB in bytes
-} as const;
-
-// ==================== Course Limits ====================
-
-export const COURSE_LIMITS = {
+  MAX_USER_STORAGE: 5 * 1024 * 1024 * 1024, // 5GB
   MAX_COURSES_PER_USER: 6,
-  MAX_NAME_LENGTH: 50,
-} as const;
+} as const
 
-// ==================== Quota Limits ====================
+// ============================================
+// PDF Processing Constants
+// ============================================
 
-export const QUOTA_LIMITS = {
-  LEARNING_INTERACTIONS: 150, // per month
-  AUTO_EXPLAIN: 300, // per month
-} as const;
+export const PDF = {
+  /** Number of pages to sample when detecting scanned PDFs */
+  SCANNED_DETECTION_SAMPLE_SIZE: 5,
+  /** Minimum text items on a page to consider it as having text */
+  MIN_TEXT_ITEMS_THRESHOLD: 50,
+  /** Ratio threshold below which a PDF is considered scanned (text pages / sample pages < 0.2) */
+  SCANNED_THRESHOLD_RATIO: 0.2,
+} as const
 
-export const QUOTA_THRESHOLDS = {
-  GREEN: 70, // < 70%
-  YELLOW: 90, // 70-90%
-  RED: 100, // > 90%
-} as const;
+// ============================================
+// URL Validation Constants
+// ============================================
 
-// ==================== Authentication ====================
+/**
+ * Allowed redirect origins for email links and authentication flows
+ * In production, only include your actual domains
+ */
+export const ALLOWED_REDIRECT_ORIGINS =
+  process.env.NODE_ENV === 'production'
+    ? ['https://luma.app', 'https://www.luma.app']
+    : ['http://localhost:3000', 'http://localhost:4000']
 
-export const AUTH_CONFIG = {
-  MIN_PASSWORD_LENGTH: 8,
-  MAX_FAILED_ATTEMPTS: 5,
-  LOCKOUT_DURATION_MS: 30 * 60 * 1000, // 30 minutes
-  SESSION_DURATION_MS: 7 * 24 * 60 * 60 * 1000, // 7 days
-  SESSION_DURATION_REMEMBER_MS: 30 * 24 * 60 * 60 * 1000, // 30 days
-  VERIFICATION_TOKEN_EXPIRY_MS: 24 * 60 * 60 * 1000, // 24 hours
-  RESET_TOKEN_EXPIRY_MS: 24 * 60 * 60 * 1000, // 24 hours
-} as const;
+// ============================================
+// Route Constants
+// ============================================
 
-// ==================== Rate Limiting ====================
+/**
+ * Route patterns for authentication middleware
+ */
+export const ROUTES = {
+  /**
+   * Auth-only routes - authenticated users should be redirected to /courses
+   * These are pages for unauthenticated users only (login, register, etc.)
+   */
+  AUTH_ONLY: ['/login', '/register', '/forgot-password', '/reset-password'] as const,
 
-export const RATE_LIMITS = {
-  EMAIL_RESEND_MAX: 5,
-  EMAIL_RESEND_WINDOW_MS: 15 * 60 * 1000, // 15 minutes
-  PASSWORD_RESET_MAX: 5,
-  PASSWORD_RESET_WINDOW_MS: 15 * 60 * 1000, // 15 minutes
-} as const;
+  /**
+   * Protected routes - require authentication
+   * Unauthenticated users should be redirected to /login
+   */
+  PROTECTED: ['/courses', '/files', '/reader', '/settings'] as const,
 
-// ==================== AI Service ====================
+  /**
+   * Admin routes - require authentication (role check at route handler level)
+   */
+  ADMIN: ['/admin'] as const,
 
-export const AI_CONFIG = {
-  TIMEOUT_MS: 30 * 1000, // 30 seconds
-} as const;
+  /**
+   * Admin login route - accessible without authentication
+   */
+  ADMIN_LOGIN: '/admin/login' as const,
 
-// ==================== Worker Tasks ====================
+  /**
+   * Public API routes - no authentication required
+   */
+  PUBLIC_API: [
+    '/api/auth/login',
+    '/api/auth/register',
+    '/api/auth/reset-password',
+    '/api/auth/resend-verification',
+    '/api/auth/verify-email',
+  ] as const,
 
-export const WORKER_CONFIG = {
-  ZOMBIE_TASK_THRESHOLD_MS: 10 * 60 * 1000, // 10 minutes
-} as const;
+  /**
+   * CRON API routes - require CRON_SECRET validation
+   */
+  CRON: '/api/cron' as const,
 
-// ==================== Supported Locales ====================
-
-export const SUPPORTED_LOCALES = ["en", "zh"] as const;
-export type SupportedLocale = (typeof SUPPORTED_LOCALES)[number];
-
-export const DEFAULT_UI_LOCALE: SupportedLocale = "en";
-export const DEFAULT_EXPLAIN_LOCALE: SupportedLocale = "en";
+  /**
+   * Default redirect destinations
+   */
+  REDIRECTS: {
+    AFTER_LOGIN: '/courses',
+    AFTER_LOGOUT: '/login',
+    UNAUTHENTICATED: '/login',
+    ADMIN_UNAUTHENTICATED: '/admin/login',
+  } as const,
+} as const
