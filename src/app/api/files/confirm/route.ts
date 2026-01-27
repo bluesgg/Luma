@@ -1,169 +1,260 @@
-import { NextRequest, NextResponse } from 'next/server'
+import type { NextRequest } from 'next/server'
 import { z } from 'zod'
-import { getCurrentUser, createAuthError, createAuthSuccess } from '@/lib/auth'
-import { prisma } from '@/lib/prisma'
-import { logger } from '@/lib/logger'
-import { AUTH_ERROR_CODES, FILE_ERROR_CODES } from '@/types'
-import { requireCsrf } from '@/lib/csrf'
-import { apiRateLimiter, getRateLimitKey } from '@/lib/rate-limit'
+import { requireAuth } from '@/lib/auth'
 import {
-  fileExistsInStorage,
-  downloadFile,
-  detectScannedPdf,
-  getPdfPageCount,
-} from '@/lib/storage'
+  successResponse,
+  errorResponse,
+  handleError,
+  HTTP_STATUS,
+} from '@/lib/api-response'
+import { ERROR_CODES, FILE_LIMITS } from '@/lib/constants'
+import prisma from '@/lib/prisma'
+import { fileExists } from '@/lib/storage'
+import { analyzePdf } from '@/lib/pdf'
+import { logger } from '@/lib/logger'
+import { apiRateLimit } from '@/lib/rate-limit'
+import { requireCsrfToken } from '@/lib/csrf-server'
 
-const uuidSchema = z.string().uuid()
+/**
+ * FILE-002: Confirm file upload completion
+ *
+ * POST /api/files/confirm
+ *
+ * Request body:
+ * {
+ *   fileId: string
+ * }
+ *
+ * Response:
+ * {
+ *   file: {
+ *     id: string
+ *     name: string
+ *     pageCount: number
+ *     isScanned: boolean
+ *     status: string
+ *     structureStatus: string
+ *     ...
+ *   }
+ * }
+ */
 
-const confirmSchema = z.object({
-  fileId: z.string().min(1, 'File ID is required'),
+const confirmUploadSchema = z.object({
+  fileId: z.string().cuid('Invalid file ID'),
 })
 
 export async function POST(request: NextRequest) {
   try {
-    // CSRF validation
-    const csrfError = await requireCsrf(request)
-    if (csrfError) return csrfError
-
-    const user = await getCurrentUser()
-    if (!user) {
-      return NextResponse.json(
-        createAuthError(AUTH_ERROR_CODES.SESSION_EXPIRED, 'Authentication required'),
-        { status: 401 }
-      )
-    }
-
-    // Rate limiting
-    const ip = request.headers.get('x-forwarded-for') ?? request.headers.get('x-real-ip')
-    const rateLimitResult = apiRateLimiter(getRateLimitKey(ip, user.id, 'confirm'))
-    if (!rateLimitResult.allowed) {
-      return NextResponse.json(
-        createAuthError(AUTH_ERROR_CODES.RATE_LIMITED, 'Too many requests'),
-        { status: 429 }
-      )
-    }
-
-    // Parse and validate request body
-    let body: unknown
+    // 1. CSRF protection
     try {
-      body = await request.json()
+      await requireCsrfToken(request)
     } catch {
-      return NextResponse.json(
-        createAuthError(FILE_ERROR_CODES.VALIDATION_ERROR, 'Invalid request body'),
-        { status: 400 }
+      return errorResponse(
+        ERROR_CODES.CSRF_TOKEN_INVALID,
+        'Invalid CSRF token',
+        HTTP_STATUS.FORBIDDEN
       )
     }
 
-    const result = confirmSchema.safeParse(body)
-    if (!result.success) {
-      return NextResponse.json(
-        createAuthError(FILE_ERROR_CODES.VALIDATION_ERROR, result.error.issues[0].message),
-        { status: 400 }
+    // 2. Authentication
+    const user = await requireAuth()
+
+    // 3. Rate limiting
+    const rateLimit = await apiRateLimit(user.id)
+    if (!rateLimit.allowed) {
+      return errorResponse(
+        ERROR_CODES.RATE_LIMIT_EXCEEDED,
+        'Too many requests. Please try again later.',
+        HTTP_STATUS.TOO_MANY_REQUESTS
       )
     }
 
-    const { fileId } = result.data
+    // 4. Parse and validate request body
+    const body = await request.json()
+    const validation = confirmUploadSchema.safeParse(body)
 
-    // Validate UUID format
-    if (!uuidSchema.safeParse(fileId).success) {
-      return NextResponse.json(
-        createAuthError(FILE_ERROR_CODES.NOT_FOUND, 'File not found'),
-        { status: 404 }
+    if (!validation.success) {
+      return errorResponse(
+        ERROR_CODES.VALIDATION_ERROR,
+        'Invalid request data',
+        HTTP_STATUS.BAD_REQUEST,
+        validation.error.errors
       )
     }
 
-    // Find file with ownership check
-    const file = await prisma.file.findFirst({
-      where: { id: fileId, userId: user.id },
-    })
+    const { fileId } = validation.data
 
-    if (!file) {
-      return NextResponse.json(
-        createAuthError(FILE_ERROR_CODES.NOT_FOUND, 'File not found'),
-        { status: 404 }
-      )
-    }
-
-    // Check if file is in uploading status
-    if (file.status !== 'uploading') {
-      return NextResponse.json(
-        createAuthError(FILE_ERROR_CODES.VALIDATION_ERROR, 'File is not in uploading status'),
-        { status: 400 }
-      )
-    }
-
-    // Validate storage path exists
-    if (!file.storagePath) {
-      logger.error('File record missing storage path', { fileId, userId: user.id })
-      return NextResponse.json(
-        createAuthError(AUTH_ERROR_CODES.INTERNAL_ERROR, 'File configuration error'),
-        { status: 500 }
-      )
-    }
-
-    // Check if file exists in storage
-    const fileExists = await fileExistsInStorage(file.storagePath)
-    if (!fileExists) {
-      // File upload was not completed - mark as failed
-      const updatedFile = await prisma.file.update({
-        where: { id: fileId },
-        data: { status: 'failed' },
-      })
-
-      return NextResponse.json(
-        createAuthSuccess({
-          file: {
-            ...updatedFile,
-            fileSize: updatedFile.fileSize ? Number(updatedFile.fileSize) : null,
+    // 5. Get file record and validate ownership
+    const file = await prisma.file.findUnique({
+      where: { id: fileId },
+      include: {
+        course: {
+          select: {
+            userId: true,
           },
-        })
-      )
-    }
-
-    // Update status to processing
-    await prisma.file.update({
-      where: { id: fileId },
-      data: { status: 'processing' },
-    })
-
-    // Download and process the PDF
-    let isScanned = false
-    let pageCount: number | null = null
-
-    try {
-      const pdfBuffer = await downloadFile(file.storagePath)
-      if (pdfBuffer) {
-        isScanned = await detectScannedPdf(pdfBuffer)
-        pageCount = await getPdfPageCount(pdfBuffer)
-      }
-    } catch {
-      logger.warn('PDF processing error', { fileId })
-      // Continue with defaults - don't fail the confirmation
-    }
-
-    // Update file to ready status
-    const updatedFile = await prisma.file.update({
-      where: { id: fileId },
-      data: {
-        status: 'ready',
-        isScanned,
-        pageCount,
+        },
       },
     })
 
-    return NextResponse.json(
-      createAuthSuccess({
-        file: {
-          ...updatedFile,
-          fileSize: updatedFile.fileSize ? Number(updatedFile.fileSize) : null,
+    if (!file) {
+      return errorResponse(
+        ERROR_CODES.FILE_NOT_FOUND,
+        'File not found',
+        HTTP_STATUS.NOT_FOUND
+      )
+    }
+
+    if (file.course.userId !== user.id) {
+      return errorResponse(
+        ERROR_CODES.FILE_FORBIDDEN,
+        'You do not have permission to access this file',
+        HTTP_STATUS.FORBIDDEN
+      )
+    }
+
+    // 6. Check if file is in UPLOADING status
+    if (file.status !== 'UPLOADING') {
+      return errorResponse(
+        ERROR_CODES.VALIDATION_ERROR,
+        'File is not in UPLOADING status',
+        HTTP_STATUS.BAD_REQUEST
+      )
+    }
+
+    // 7. Verify file exists in storage
+    const exists = await fileExists(file.storagePath)
+    if (!exists) {
+      logger.error('File not found in storage after upload', {
+        fileId: file.id,
+        storagePath: file.storagePath,
+      })
+
+      // Update file status to FAILED
+      await prisma.file.update({
+        where: { id: fileId },
+        data: {
+          status: 'FAILED',
         },
       })
+
+      return errorResponse(
+        ERROR_CODES.FILE_NOT_FOUND,
+        'File not found in storage. Upload may have failed.',
+        HTTP_STATUS.BAD_REQUEST
+      )
+    }
+
+    // 8. Analyze PDF to get metadata
+    let pdfMetadata
+    try {
+      pdfMetadata = await analyzePdf(file.storagePath)
+    } catch (error) {
+      logger.error('Failed to analyze PDF', { fileId, error })
+
+      // Update file status to FAILED in transaction to ensure consistency
+      await prisma.file.update({
+        where: { id: fileId },
+        data: {
+          status: 'FAILED',
+        },
+      })
+
+      return errorResponse(
+        ERROR_CODES.INTERNAL_SERVER_ERROR,
+        'Failed to analyze PDF file',
+        HTTP_STATUS.INTERNAL_SERVER_ERROR
+      )
+    }
+
+    // 9. Validate page count and update file in a transaction
+    // This ensures atomic update and prevents partial state on errors
+    let updatedFile
+    try {
+      updatedFile = await prisma.$transaction(async (tx) => {
+        // Validate page count
+        if (pdfMetadata.pageCount > FILE_LIMITS.MAX_PAGE_COUNT) {
+          logger.error('PDF exceeds maximum page count', {
+            fileId,
+            pageCount: pdfMetadata.pageCount,
+          })
+
+          // Update file status to FAILED
+          await tx.file.update({
+            where: { id: fileId },
+            data: {
+              status: 'FAILED',
+            },
+          })
+
+          throw new Error(
+            `FILE_TOO_MANY_PAGES:PDF exceeds maximum page count of ${FILE_LIMITS.MAX_PAGE_COUNT} pages`
+          )
+        }
+
+        // Update file record with metadata and status
+        const updated = await tx.file.update({
+          where: { id: fileId },
+          data: {
+            pageCount: pdfMetadata.pageCount,
+            isScanned: pdfMetadata.isScanned,
+            status: 'PROCESSING', // Will be set to READY after structure extraction
+            updatedAt: new Date(),
+          },
+          include: {
+            course: {
+              select: {
+                id: true,
+                name: true,
+              },
+            },
+          },
+        })
+
+        return updated
+      })
+    } catch (error) {
+      // Handle transaction errors
+      if (error instanceof Error && error.message.includes(':')) {
+        const parts = error.message.split(':', 2)
+        const code = parts[0]
+        const message = parts[1] || 'Unknown error'
+
+        if (code === 'FILE_TOO_MANY_PAGES') {
+          return errorResponse(
+            ERROR_CODES.FILE_TOO_MANY_PAGES,
+            message,
+            HTTP_STATUS.BAD_REQUEST
+          )
+        }
+      }
+
+      logger.error('Error in confirm transaction', error)
+      return handleError(error)
+    }
+
+    // 11. Return updated file record
+    return successResponse(
+      {
+        file: {
+          id: updatedFile.id,
+          courseId: updatedFile.courseId,
+          name: updatedFile.name,
+          type: updatedFile.type,
+          pageCount: updatedFile.pageCount,
+          fileSize: updatedFile.fileSize.toString(), // Convert BigInt to string
+          isScanned: updatedFile.isScanned,
+          status: updatedFile.status,
+          structureStatus: updatedFile.structureStatus,
+          storagePath: updatedFile.storagePath,
+          createdAt: updatedFile.createdAt.toISOString(),
+          updatedAt: updatedFile.updatedAt.toISOString(),
+          course: updatedFile.course,
+        },
+      },
+      HTTP_STATUS.OK
     )
   } catch (error) {
-    logger.error('File confirm error', error, { action: 'confirm-file' })
-    return NextResponse.json(
-      createAuthError(AUTH_ERROR_CODES.INTERNAL_ERROR, 'Failed to confirm file upload'),
-      { status: 500 }
-    )
+    logger.error('Error in confirm route', error)
+    return handleError(error)
   }
 }

@@ -1,423 +1,212 @@
-# Test Suite Documentation
+# Luma Tests
 
-## Overview
+This directory contains the test suite for the Luma project using Vitest.
 
-Comprehensive test suite following Test-Driven Development (TDD) methodology for the Luma Web application.
-
-## Test Structure
+## Directory Structure
 
 ```
 tests/
-├── setup.ts                    # Global test setup and mocks
-├── unit/                       # Pure unit tests (no dependencies)
-├── integration/                # API integration tests
-├── hooks/                      # React hooks tests
-├── components/                 # React component tests
-│   ├── auth/                   # Authentication components
-│   ├── course/                 # Course components
-│   ├── file/                   # File upload/management components
-│   └── ui/                     # UI components
-├── pages/                      # Page component tests
-├── api/                        # API route tests
-├── lib/                        # Library/utility tests
-└── e2e/                        # End-to-end tests (Playwright)
+├── setup.ts                          # Global test setup and mocks
+├── lib/                              # Library/utility tests
+│   ├── api-response.test.ts         # API response helpers
+│   ├── csrf.test.ts                 # CSRF token generation/validation
+│   ├── logger.test.ts               # Logger utility
+│   ├── query-client.test.ts         # TanStack Query configuration
+│   ├── rate-limit.test.ts           # Rate limiting utility
+│   └── validation.test.ts           # Zod validation schemas
+└── stores/                           # Zustand store tests
+    ├── learning-store.test.ts       # Learning state management
+    └── reader-store.test.ts         # PDF reader state management
 ```
 
 ## Running Tests
 
-### All Tests
-```bash
-npm test                        # Run all tests once
-npm test -- --watch            # Run in watch mode
-npm test -- --ui               # Run with UI
-```
+### Run all tests
 
-### Specific Test Files
-```bash
-npm test -- tests/hooks/use-multi-file-upload.test.ts
-npm test -- tests/components/file/
-npm test -- tests/api/
-```
-
-### Coverage
-```bash
-npm run test:coverage          # Generate coverage report
-npm run test:coverage -- --ui  # View coverage in browser
-```
-
-### E2E Tests
-```bash
-npm run test:e2e              # Run E2E tests
-npm run test:e2e:ui           # Run with UI
-npm run test:e2e:debug        # Debug mode
-```
-
-## Test Categories
-
-### Unit Tests
-Test individual functions/modules in isolation.
-
-**Location**: `tests/unit/`, `tests/lib/`
-
-**Example**:
-```typescript
-import { formatFileSize } from '@/lib/utils'
-
-describe('formatFileSize', () => {
-  it('formats bytes correctly', () => {
-    expect(formatFileSize(1024)).toBe('1.0 KB')
-  })
-})
-```
-
-### Hook Tests
-Test React hooks using `@testing-library/react`.
-
-**Location**: `tests/hooks/`
-
-**Example**:
-```typescript
-import { renderHook, act } from '@testing-library/react'
-import { useMultiFileUpload } from '@/hooks/use-multi-file-upload'
-
-describe('useMultiFileUpload', () => {
-  it('adds files to queue', () => {
-    const { result } = renderHook(() => useMultiFileUpload(courseId, token))
-
-    act(() => {
-      result.current.addFiles([file])
-    })
-
-    expect(result.current.queue).toHaveLength(1)
-  })
-})
-```
-
-### Component Tests
-Test React components with user interactions.
-
-**Location**: `tests/components/`
-
-**Example**:
-```typescript
-import { render, screen, fireEvent } from '@testing-library/react'
-import { FileUploadItem } from '@/components/file/file-upload-item'
-
-describe('FileUploadItem', () => {
-  it('calls onCancel when clicked', () => {
-    const onCancel = vi.fn()
-    render(<FileUploadItem item={item} onCancel={onCancel} />)
-
-    fireEvent.click(screen.getByRole('button', { name: /cancel/i }))
-
-    expect(onCancel).toHaveBeenCalledWith(item.id)
-  })
-})
-```
-
-### Integration Tests
-Test API routes and database interactions.
-
-**Location**: `tests/integration/`, `tests/api/`
-
-**Example**:
-```typescript
-import { POST } from '@/app/api/files/upload-url/route'
-import { NextRequest } from 'next/server'
-
-describe('POST /api/files/upload-url', () => {
-  it('returns signed URL for valid request', async () => {
-    const request = new NextRequest('http://localhost/api/files/upload-url', {
-      method: 'POST',
-      body: JSON.stringify({ courseId, fileName: 'test.pdf', fileSize: 1024 })
-    })
-
-    const response = await POST(request)
-    const data = await response.json()
-
-    expect(response.status).toBe(200)
-    expect(data.data.uploadUrl).toBeDefined()
-  })
-})
-```
-
-### E2E Tests
-Test complete user flows with Playwright.
-
-**Location**: `tests/e2e/`
-
-**Example**:
-```typescript
-import { test, expect } from '@playwright/test'
-
-test('user can upload PDF file', async ({ page }) => {
-  await page.goto('/courses/123')
-
-  // Upload file
-  await page.setInputFiles('input[type="file"]', 'test.pdf')
-
-  // Verify upload
-  await expect(page.getByText('Upload complete')).toBeVisible()
-})
-```
-
-## TDD Workflow
-
-### 1. Write Test First (RED)
-```typescript
-describe('searchMarkets', () => {
-  it('returns semantically similar markets', async () => {
-    const results = await searchMarkets('election')
-
-    expect(results).toHaveLength(5)
-    expect(results[0].name).toContain('Trump')
-  })
-})
-```
-
-### 2. Run Test (Verify FAIL)
 ```bash
 npm test
-# Test should fail - implementation doesn't exist yet
 ```
 
-### 3. Write Minimal Implementation (GREEN)
-```typescript
-export async function searchMarkets(query: string) {
-  const embedding = await generateEmbedding(query)
-  const results = await vectorSearch(embedding)
-  return results
-}
-```
+### Run tests in watch mode
 
-### 4. Run Test (Verify PASS)
 ```bash
-npm test
-# Test should now pass
+npm test -- --watch
 ```
 
-### 5. Refactor (IMPROVE)
-```typescript
-export async function searchMarkets(query: string) {
-  // Better error handling
-  if (!query) throw new Error('Query required')
+### Run tests with coverage
 
-  // Cached embedding generation
-  const embedding = await getCachedEmbedding(query)
-
-  // Optimized search with limit
-  return vectorSearch(embedding, { limit: 5 })
-}
-```
-
-### 6. Verify Coverage
 ```bash
-npm run test:coverage
-# Ensure 80%+ coverage
+npm test -- --coverage
 ```
 
-## Mocking
+### Run specific test file
 
-### API Calls
+```bash
+npm test tests/lib/query-client.test.ts
+```
+
+### Run tests matching pattern
+
+```bash
+npm test -- --grep "API response"
+```
+
+## Writing Tests
+
+### Test File Template
+
 ```typescript
-global.fetch = vi.fn()
+import { describe, it, expect, beforeEach } from 'vitest'
 
-;(global.fetch as any).mockResolvedValueOnce({
-  ok: true,
-  json: async () => ({ success: true, data: { id: '123' } })
+describe('Feature Name', () => {
+  beforeEach(() => {
+    // Setup before each test
+  })
+
+  describe('Sub-feature', () => {
+    it('should do something', () => {
+      // Arrange
+      const input = 'test'
+
+      // Act
+      const result = functionToTest(input)
+
+      // Assert
+      expect(result).toBe('expected')
+    })
+  })
 })
 ```
 
-### Database
+### Testing Conventions
+
+1. **File Naming**: `*.test.ts` or `*.test.tsx`
+2. **Test Naming**: Use descriptive `it('should ...')` statements
+3. **Organization**: Group related tests in `describe` blocks
+4. **Isolation**: Each test should be independent
+5. **Mocking**: Use mocks from `setup.ts` or create local mocks
+
+### Mock Data
+
+Use pre-defined mock data from `setup.ts`:
+
 ```typescript
-vi.mock('@/lib/prisma', () => ({
-  prisma: {
-    file: {
-      create: vi.fn(() => Promise.resolve(mockFile))
-    }
-  }
-}))
+import { mockUser, mockCourse, mockFile } from './setup'
+
+it('should use mock data', () => {
+  expect(mockUser.email).toBe('test@example.com')
+})
 ```
 
-### Authentication
-```typescript
-vi.mock('@/lib/auth', () => ({
-  getCurrentUser: vi.fn(() => Promise.resolve(mockUser))
-}))
-```
+## Test Coverage
 
-### Environment Variables
-```typescript
-vi.stubEnv('NEXT_PUBLIC_SUPABASE_URL', 'https://test.supabase.co')
-```
+View coverage report:
 
-## Coverage Requirements
-
-### Per-File Thresholds
-| Category | Statements | Branches | Functions | Lines |
-|----------|-----------|----------|-----------|-------|
-| Critical (auth, payments) | 90% | 85% | 90% | 90% |
-| Core (hooks, API) | 85% | 80% | 85% | 85% |
-| Components | 80% | 75% | 80% | 80% |
-| Utils | 90% | 85% | 90% | 90% |
-
-### Viewing Coverage
 ```bash
-# Generate report
-npm run test:coverage
-
-# Open in browser
-open coverage/index.html
+npm test -- --coverage
 ```
 
-## Best Practices
+Coverage reports are generated in:
 
-### ✅ DO
-- Write tests before implementation (TDD)
-- Test user behavior, not implementation details
-- Use descriptive test names
-- Keep tests isolated and independent
-- Mock external dependencies
-- Test edge cases and error paths
-- Use `data-testid` for stable selectors
-- Follow AAA pattern (Arrange, Act, Assert)
-
-### ❌ DON'T
-- Test implementation details (internal state)
-- Write tests after implementation
-- Make tests depend on each other
-- Mock what you're testing
-- Use complex setup/teardown
-- Skip edge cases
-- Use brittle selectors (CSS classes)
-- Write one giant test
-
-## Test Patterns
-
-### AAA Pattern
-```typescript
-it('validates file size', () => {
-  // Arrange
-  const file = new File(['x'], 'test.pdf', { type: 'application/pdf' })
-  Object.defineProperty(file, 'size', { value: 1024 * 1024 }) // 1MB
-
-  // Act
-  const result = validateFile(file)
-
-  // Assert
-  expect(result.valid).toBe(true)
-})
-```
-
-### Given-When-Then (BDD)
-```typescript
-it('rejects oversized files', () => {
-  // Given a file larger than 200MB
-  const largeFile = createFile(201 * 1024 * 1024)
-
-  // When validating the file
-  const result = validateFile(largeFile)
-
-  // Then it should be rejected
-  expect(result.valid).toBe(false)
-  expect(result.error).toContain('200 MB')
-})
-```
+- Terminal: Text format
+- `coverage/index.html`: Interactive HTML report
 
 ## Debugging Tests
 
-### Failed Tests
+### Enable verbose output
+
 ```bash
-# Run specific test
-npm test -- -t "validates file size"
-
-# Run in debug mode
-npm test -- --inspect-brk
-
-# View test output
 npm test -- --reporter=verbose
 ```
 
-### Coverage Gaps
-```bash
-# Generate coverage
-npm run test:coverage
+### Run single test
 
-# Check uncovered lines
-open coverage/lcov-report/index.html
+Add `.only` to focus on one test:
+
+```typescript
+it.only('should test this specific case', () => {
+  // ...
+})
 ```
 
-### E2E Debugging
-```bash
-# Run with browser visible
-npm run test:e2e:headed
+### Skip test temporarily
 
-# Debug mode with DevTools
-npm run test:e2e:debug
+Add `.skip` to skip a test:
 
-# View test report
-npm run test:e2e:report
+```typescript
+it.skip('should be fixed later', () => {
+  // ...
+})
 ```
 
 ## CI/CD Integration
 
 Tests run automatically on:
-- Every commit (pre-commit hook)
-- Pull requests (GitHub Actions)
-- Before deployment
 
-### Pre-commit Hook
+- Pull requests
+- Commits to main branch
+- Pre-commit hooks (via Husky)
+
+## Best Practices
+
+1. **Test Behavior, Not Implementation**
+   - Focus on what the function does, not how it does it
+   - Tests should survive refactoring
+
+2. **Keep Tests Simple**
+   - One assertion per test when possible
+   - Clear setup and expectations
+
+3. **Use Descriptive Names**
+   - Test names should explain what is being tested
+   - Include expected behavior in the name
+
+4. **Mock External Dependencies**
+   - Don't rely on external services
+   - Use mocks for database, API calls, etc.
+
+5. **Test Edge Cases**
+   - Empty inputs
+   - Null/undefined values
+   - Boundary conditions
+   - Error scenarios
+
+## Common Issues
+
+### Tests Fail After Clean Install
+
 ```bash
-# .git/hooks/pre-commit
-npm test && npm run lint
+# Clear cache and reinstall
+rm -rf node_modules pnpm-lock.yaml
+pnpm install
 ```
 
-### GitHub Actions
-```yaml
-# .github/workflows/test.yml
-- name: Run tests
-  run: |
-    npm test -- --coverage --ci
-    npm run test:e2e
+### Mocks Not Working
+
+- Check `tests/setup.ts` for proper mock setup
+- Ensure mocks are imported before the modules being tested
+- Use `vi.clearAllMocks()` in `beforeEach`
+
+### Timeout Errors
+
+Increase timeout for slow tests:
+
+```typescript
+it('slow test', async () => {
+  // ...
+}, 10000) // 10 second timeout
 ```
-
-## File Upload Tests
-
-Comprehensive test suite for multi-file upload feature:
-
-**Location**: `tests/hooks/use-multi-file-upload.test.ts`, `tests/components/file/`
-
-**Coverage**: 118 tests covering:
-- File validation (PDF only, 200MB max)
-- Queue management (max 30 files)
-- Concurrent uploads (max 3)
-- Retry logic (max 3 attempts)
-- Progress tracking
-- Error handling
-- Accessibility
-
-**Run Upload Tests**:
-```bash
-npm test -- tests/hooks/use-multi-file-upload.test.ts
-npm test -- tests/components/file/
-```
-
-See [TEST_PLAN.md](../docs/TEST_PLAN.md) for detailed documentation.
 
 ## Resources
 
-- [Testing Library Docs](https://testing-library.com/docs/react-testing-library/intro)
-- [Vitest Docs](https://vitest.dev/)
-- [Playwright Docs](https://playwright.dev/)
-- [TDD Guide](https://martinfowler.com/bliki/TestDrivenDevelopment.html)
-- [Testing Best Practices](https://kentcdodds.com/blog/common-mistakes-with-react-testing-library)
+- [Vitest Documentation](https://vitest.dev/)
+- [Testing Library](https://testing-library.com/)
+- [TDD Best Practices](https://martinfowler.com/bliki/TestDrivenDevelopment.html)
 
-## Getting Help
+## Support
 
-**Common Issues**:
-- Check `tests/setup.ts` for global mocks
-- Verify environment variables are set
-- Clear test cache: `npm test -- --clearCache`
-- Check for async timing issues with `waitFor`
+For questions or issues with tests:
 
-**Questions**: Check project documentation in `docs/` or ask the team.
+1. Check this README
+2. Review existing test files for examples
+3. Consult the team's testing guidelines

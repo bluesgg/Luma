@@ -1,203 +1,119 @@
-import { Prisma } from '@prisma/client'
-import { z } from 'zod'
-import { createClient } from '@/lib/supabase/server'
-import { prisma } from '@/lib/prisma'
-import { AUTH, QUOTA } from '@/lib/constants'
-import { sanitizeUserAgent, sanitizeMetadata } from '@/lib/sanitize'
-import type { AppErrorCode, ApiSuccessResponse, ApiErrorResponse } from '@/types'
-
-// Email validation using Zod for robust validation
-const emailSchema = z.string().email()
+import type { NextRequest } from 'next/server'
+import { cookies } from 'next/headers'
+import prisma from './prisma'
+import type { User } from '@prisma/client'
+import { SECURITY } from './constants'
+import { logger } from './logger'
 
 /**
- * Validate email format
+ * Get the current user from the session
  */
-export function isValidEmail(email: string): boolean {
-  return emailSchema.safeParse(email).success
-}
+export async function getCurrentUser(): Promise<User | null> {
+  try {
+    const cookieStore = await cookies()
+    const sessionCookie = cookieStore.get(SECURITY.SESSION_COOKIE_NAME)
 
-/**
- * Validate password strength
- */
-export function isValidPassword(password: string): boolean {
-  return password.length >= AUTH.PASSWORD_MIN_LENGTH
-}
+    if (!sessionCookie?.value) {
+      return null
+    }
 
-/**
- * Create a standardized error response
- */
-export function createAuthError(
-  code: AppErrorCode,
-  message: string
-): ApiErrorResponse {
-  return {
-    success: false,
-    error: { code, message },
-  }
-}
+    const userId = sessionCookie.value
 
-/**
- * Create a standardized success response
- */
-export function createAuthSuccess<T>(data: T): ApiSuccessResponse<T> {
-  return {
-    success: true,
-    data,
-  }
-}
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+    })
 
-/**
- * Get current authenticated user from session
- */
-export async function getCurrentUser() {
-  const supabase = await createClient()
-  const {
-    data: { user },
-    error,
-  } = await supabase.auth.getUser()
-
-  if (error || !user) {
+    return user
+  } catch (error) {
+    logger.error('Error getting current user', error)
     return null
+  }
+}
+
+/**
+ * Require authentication - throws if not authenticated
+ */
+export async function requireAuth(): Promise<User> {
+  const user = await getCurrentUser()
+
+  if (!user) {
+    throw new Error('Unauthorized')
   }
 
   return user
 }
 
 /**
- * Get current user and verify admin role
- * Returns null if user is not authenticated or not an admin
+ * Require email verification
  */
-export async function getCurrentAdmin() {
+export async function requireVerifiedEmail(): Promise<User> {
+  const user = await requireAuth()
+
+  if (!user.emailConfirmedAt) {
+    throw new Error('Email not verified')
+  }
+
+  return user
+}
+
+/**
+ * Check if user owns a resource
+ */
+export async function requireOwnership(resourceUserId: string): Promise<User> {
+  const user = await requireAuth()
+
+  if (user.id !== resourceUserId) {
+    throw new Error('Forbidden')
+  }
+
+  return user
+}
+
+/**
+ * Get user ID from request (for API routes)
+ */
+export async function getUserIdFromRequest(
+  _request: NextRequest
+): Promise<string | null> {
   const user = await getCurrentUser()
-  if (!user) return null
-
-  const profile = await getUserProfile(user.id)
-  if (!profile || profile.role !== 'admin') return null
-
-  return { user, profile }
+  return user?.id || null
 }
 
 /**
- * Get user profile from database
+ * Check if account is locked
  */
-export async function getUserProfile(userId: string) {
-  return prisma.profile.findUnique({
-    where: { userId },
-    include: {
-      quotas: true,
-      preference: true,
-    },
-  })
+export function isAccountLocked(user: User): boolean {
+  if (!user.lockedUntil) return false
+  return new Date(user.lockedUntil) > new Date()
 }
 
 /**
- * Create profile and quota records for new user
+ * Validate password strength
  */
-export async function createUserProfile(userId: string) {
-  const now = new Date()
-  const nextMonth = new Date(now)
-  nextMonth.setMonth(nextMonth.getMonth() + 1)
+export function validatePasswordStrength(password: string): {
+  valid: boolean
+  errors: string[]
+} {
+  const errors: string[] = []
 
-  // Use transaction to ensure atomicity
-  return prisma.$transaction(async (tx) => {
-    // Create profile
-    const profile = await tx.profile.create({
-      data: {
-        userId,
-        role: 'student',
-      },
-    })
-
-    // Create learning interactions quota
-    await tx.quota.create({
-      data: {
-        userId,
-        bucket: 'learningInteractions',
-        used: 0,
-        limit: QUOTA.LEARNING_INTERACTIONS_LIMIT,
-        resetAt: nextMonth,
-      },
-    })
-
-    // Create auto explain quota
-    await tx.quota.create({
-      data: {
-        userId,
-        bucket: 'autoExplain',
-        used: 0,
-        limit: QUOTA.AUTO_EXPLAIN_LIMIT,
-        resetAt: nextMonth,
-      },
-    })
-
-    return profile
-  })
-}
-
-/**
- * Record login access log with sanitized metadata
- */
-export async function recordLoginLog(
-  userId: string,
-  metadata?: Record<string, unknown>
-) {
-  // Sanitize metadata to prevent log injection and XSS
-  let sanitizedMetadata: Prisma.InputJsonValue | undefined
-
-  if (metadata) {
-    const cleanMetadata: Record<string, unknown> = {}
-
-    // Sanitize known fields
-    if (typeof metadata.userAgent === 'string') {
-      cleanMetadata.userAgent = sanitizeUserAgent(metadata.userAgent)
-    }
-    if (typeof metadata.rememberMe === 'boolean') {
-      cleanMetadata.rememberMe = metadata.rememberMe
-    }
-
-    // Sanitize any other fields
-    const otherFields = Object.keys(metadata).filter(
-      (k) => k !== 'userAgent' && k !== 'rememberMe'
-    )
-    if (otherFields.length > 0) {
-      const otherMetadata: Record<string, unknown> = {}
-      for (const key of otherFields) {
-        otherMetadata[key] = metadata[key]
-      }
-      Object.assign(cleanMetadata, sanitizeMetadata(otherMetadata))
-    }
-
-    sanitizedMetadata = cleanMetadata as Prisma.InputJsonValue
+  if (password.length < 8) {
+    errors.push('Password must be at least 8 characters long')
   }
 
-  return prisma.accessLog.create({
-    data: {
-      userId,
-      actionType: 'login',
-      metadata: sanitizedMetadata,
-    },
-  })
-}
-
-/**
- * Calculate next quota reset date based on registration anniversary
- */
-export function calculateNextResetDate(registrationDate: Date): Date {
-  const now = new Date()
-  const resetDay = registrationDate.getDate()
-
-  let nextReset = new Date(now.getFullYear(), now.getMonth(), resetDay)
-
-  // If this month's reset day has passed, move to next month
-  if (nextReset <= now) {
-    nextReset.setMonth(nextReset.getMonth() + 1)
+  if (!/[a-z]/.test(password)) {
+    errors.push('Password must contain at least one lowercase letter')
   }
 
-  // Handle edge case where day doesn't exist in month (e.g., Jan 31 -> Feb 28)
-  if (nextReset.getDate() !== resetDay) {
-    // Set to last day of previous month
-    nextReset = new Date(nextReset.getFullYear(), nextReset.getMonth(), 0)
+  if (!/[A-Z]/.test(password)) {
+    errors.push('Password must contain at least one uppercase letter')
   }
 
-  return nextReset
+  if (!/[0-9]/.test(password)) {
+    errors.push('Password must contain at least one number')
+  }
+
+  return {
+    valid: errors.length === 0,
+    errors,
+  }
 }

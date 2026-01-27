@@ -1,242 +1,250 @@
-/**
- * PDF Processing Utilities
- *
- * Provides functions for:
- * - Detecting scanned PDFs (image-only documents)
- * - Getting page counts
- * - Extracting text from specific pages
- *
- * Uses pdfjs-dist in Node.js environment (server-side).
- */
-
-import { getDocument, GlobalWorkerOptions, type PDFDocumentProxy } from 'pdfjs-dist'
-import { PDF } from '@/lib/constants'
-import { logger } from '@/lib/logger'
-
-// Configure PDF.js worker for Node.js environment
-// Setting to empty string disables workers (runs on main thread in Node.js)
-GlobalWorkerOptions.workerSrc = ''
+import { createClient } from '@/lib/supabase/server'
+import { logger } from './logger'
 
 /**
- * Type guard for TextItem objects in pdfjs-dist
- * TextItem has a 'str' property containing the text content
+ * PDF utility functions for analyzing and processing PDF files
  */
-interface TextItem {
-  str: string
-}
 
-function isTextItem(item: unknown): item is TextItem {
-  return typeof item === 'object' && item !== null && 'str' in item && typeof (item as TextItem).str === 'string'
+/**
+ * Threshold for determining if a PDF is scanned
+ * If text content is less than this percentage of expected content, it's considered scanned
+ */
+export const SCANNED_PDF_TEXT_THRESHOLD = 0.7
+
+/**
+ * PDF metadata interface
+ */
+export interface PdfMetadata {
+  pageCount: number
+  isScanned: boolean
+  fileSize: number
+  textContent?: string
 }
 
 /**
- * Detects if a PDF is likely a scanned document (image-only, no embedded text).
- *
- * Algorithm:
- * 1. Sample the first N pages (default 5, or fewer if document is smaller)
- * 2. Extract text items from each sampled page
- * 3. If a page has more than MIN_TEXT_ITEMS_THRESHOLD (50) text items, count it as having text
- * 4. If less than SCANNED_THRESHOLD_RATIO (20%) of pages have text, consider it scanned
- *
- * @param pdfBuffer - Buffer containing the PDF data
- * @returns Promise<boolean> - true if the PDF appears to be scanned, false otherwise
- *
- * @example
- * ```ts
- * const buffer = fs.readFileSync('document.pdf')
- * const isScanned = await detectScanned(buffer)
- * if (isScanned) {
- *   console.log('This PDF needs OCR processing')
- * }
- * ```
+ * Analyze a PDF file from storage and return metadata
+ * Enhanced error handling with specific error types
+ * @param storagePath - The path to the PDF file in Supabase Storage
+ * @returns PDF metadata including page count and scanned status
+ * @throws Error with descriptive context about what failed
  */
-export async function detectScanned(pdfBuffer: Buffer): Promise<boolean> {
-  let pdfDoc: PDFDocumentProxy | null = null
-
+export async function analyzePdf(storagePath: string): Promise<PdfMetadata> {
   try {
-    pdfDoc = await loadPdfDocument(pdfBuffer)
+    const supabase = await createClient()
 
-    // Handle empty document
-    if (pdfDoc.numPages === 0) {
-      logger.debug('PDF has 0 pages, treating as scanned')
-      return true // Empty document is considered "scanned" (no text)
-    }
+    // Download the PDF file from storage
+    let data
+    try {
+      const downloadResult = await supabase.storage
+        .from('pdfs')
+        .download(storagePath)
 
-    // Determine how many pages to sample
-    const sampleSize = Math.min(pdfDoc.numPages, PDF.SCANNED_DETECTION_SAMPLE_SIZE)
-
-    let pagesWithText = 0
-
-    // Sample pages and count those with sufficient text
-    for (let i = 1; i <= sampleSize; i++) {
-      try {
-        const page = await pdfDoc.getPage(i)
-        const textContent = await page.getTextContent()
-
-        // Count text items on this page
-        const textItemCount = textContent.items.length
-
-        // If text items exceed threshold, count this page as having text
-        if (textItemCount > PDF.MIN_TEXT_ITEMS_THRESHOLD) {
-          pagesWithText++
-        }
-      } catch (pageError) {
-        // If we can't extract text from a page, treat it as no text
-        logger.warn('Failed to extract text from PDF page', {
-          pageNumber: i,
-          error: pageError instanceof Error ? pageError.message : 'Unknown error',
-        })
-        continue
+      if (downloadResult.error) {
+        throw new Error(
+          `Storage download failed: ${downloadResult.error.message}`
+        )
       }
-    }
 
-    // Calculate ratio of pages with text
-    const textRatio = pagesWithText / sampleSize
-    const isScanned = textRatio < PDF.SCANNED_THRESHOLD_RATIO
-
-    logger.debug('Scanned detection complete', {
-      sampleSize,
-      pagesWithText,
-      textRatio,
-      isScanned,
-    })
-
-    // If ratio is below threshold, consider it scanned
-    return isScanned
-  } catch (error) {
-    // On any error, default to assuming scanned (safer for OCR pipeline)
-    logger.error('Failed to detect scanned PDF', error, { action: 'detectScanned' })
-    return true
-  } finally {
-    // Clean up to prevent memory leaks
-    if (pdfDoc) {
-      await pdfDoc.destroy()
-    }
-  }
-}
-
-/**
- * Gets the total number of pages in a PDF document.
- *
- * @param pdfBuffer - Buffer containing the PDF data
- * @returns Promise<number | null> - Number of pages, or null if PDF cannot be parsed
- *
- * @example
- * ```ts
- * const buffer = fs.readFileSync('document.pdf')
- * const pageCount = await getPdfPageCount(buffer)
- * if (pageCount !== null) {
- *   console.log(`Document has ${pageCount} pages`)
- * }
- * ```
- */
-export async function getPdfPageCount(pdfBuffer: Buffer): Promise<number | null> {
-  let pdfDoc: PDFDocumentProxy | null = null
-
-  try {
-    pdfDoc = await loadPdfDocument(pdfBuffer)
-
-    // Handle undefined numPages gracefully
-    if (typeof pdfDoc.numPages !== 'number') {
-      logger.warn('PDF numPages is not a number', { type: typeof pdfDoc.numPages })
-      return null
-    }
-
-    return pdfDoc.numPages
-  } catch (error) {
-    logger.error('Failed to get PDF page count', error, { action: 'getPdfPageCount' })
-    return null
-  } finally {
-    // Clean up to prevent memory leaks
-    if (pdfDoc) {
-      await pdfDoc.destroy()
-    }
-  }
-}
-
-/**
- * Extracts text content from a specific page of a PDF document.
- *
- * @param pdfBuffer - Buffer containing the PDF data
- * @param pageNumber - 1-indexed page number to extract text from
- * @returns Promise<string | null> - Extracted text, empty string if page has no text,
- *                                   or null if page is invalid or an error occurs
- *
- * @example
- * ```ts
- * const buffer = fs.readFileSync('document.pdf')
- * const text = await extractPageText(buffer, 1)
- * if (text !== null) {
- *   console.log('First page content:', text)
- * }
- * ```
- */
-export async function extractPageText(
-  pdfBuffer: Buffer,
-  pageNumber: number
-): Promise<string | null> {
-  // Validate page number before loading document
-  if (pageNumber < 1) {
-    logger.warn('Invalid page number requested', { pageNumber })
-    return null
-  }
-
-  let pdfDoc: PDFDocumentProxy | null = null
-
-  try {
-    pdfDoc = await loadPdfDocument(pdfBuffer)
-
-    // Handle empty document
-    if (pdfDoc.numPages === 0) {
-      logger.warn('Cannot extract text from empty PDF')
-      return null
-    }
-
-    // Check if page number is valid
-    if (pageNumber > pdfDoc.numPages) {
-      logger.warn('Page number exceeds document length', {
-        pageNumber,
-        totalPages: pdfDoc.numPages,
+      data = downloadResult.data
+    } catch (error) {
+      logger.error('Failed to download PDF from storage', {
+        storagePath,
+        error,
       })
-      return null
+      throw new Error(
+        `Failed to download PDF from storage at path "${storagePath}": ${error instanceof Error ? error.message : 'Unknown error'}`
+      )
     }
 
-    const page = await pdfDoc.getPage(pageNumber)
-    const textContent = await page.getTextContent()
+    if (!data) {
+      const errorMsg = `PDF file not found in storage at path: ${storagePath}`
+      logger.error(errorMsg)
+      throw new Error(errorMsg)
+    }
 
-    // Concatenate all text items using type guard
-    // Filter to get only TextItem objects, then map to extract strings
-    const textItems = textContent.items.filter(isTextItem) as TextItem[]
-    const text = textItems.map((item) => item.str).join('')
+    // Convert blob to buffer
+    let buffer
+    try {
+      const arrayBuffer = await data.arrayBuffer()
+      buffer = Buffer.from(arrayBuffer)
+    } catch (error) {
+      logger.error('Failed to convert PDF blob to buffer', {
+        storagePath,
+        error,
+      })
+      throw new Error(
+        `Failed to read PDF file data: ${error instanceof Error ? error.message : 'Unknown error'}`
+      )
+    }
 
-    return text
+    // Get page count
+    let pageCount
+    try {
+      pageCount = await getPdfPageCount(buffer)
+    } catch (error) {
+      logger.error('Failed to get PDF page count', { storagePath, error })
+      throw new Error(
+        `Failed to analyze PDF structure (invalid or corrupted PDF): ${error instanceof Error ? error.message : 'Unknown error'}`
+      )
+    }
+
+    // Check if PDF is scanned
+    let isScanned
+    try {
+      isScanned = await isScannedPdf(buffer, pageCount)
+    } catch (error) {
+      logger.error('Failed to determine if PDF is scanned', {
+        storagePath,
+        error,
+      })
+      // Don't throw here - we can still proceed with default value
+      isScanned = false
+    }
+
+    return {
+      pageCount,
+      isScanned,
+      fileSize: buffer.length,
+    }
   } catch (error) {
-    logger.error('Failed to extract page text', error, {
-      action: 'extractPageText',
-      pageNumber,
-    })
-    return null
-  } finally {
-    // Clean up to prevent memory leaks
-    if (pdfDoc) {
-      await pdfDoc.destroy()
+    // Re-throw with additional context if not already wrapped
+    if (error instanceof Error && error.message.includes('Failed to')) {
+      throw error
     }
+
+    logger.error('Unexpected error analyzing PDF', { storagePath, error })
+    throw new Error(
+      `Unexpected error analyzing PDF: ${error instanceof Error ? error.message : 'Unknown error'}`
+    )
   }
 }
 
 /**
- * Helper function to load a PDF document from a buffer.
- * Centralizes the document loading logic for reuse.
- *
- * @param pdfBuffer - Buffer containing the PDF data
- * @returns Promise<PDFDocumentProxy> - The loaded PDF document
- * @throws Error if the PDF cannot be parsed
+ * Get the page count of a PDF file
+ * @param buffer - PDF file buffer
+ * @returns Number of pages in the PDF
  */
-async function loadPdfDocument(pdfBuffer: Buffer): Promise<PDFDocumentProxy> {
-  // Buffer is a subclass of Uint8Array in Node.js, so we can use it directly
-  // This avoids creating a copy and doubling memory usage for large PDFs
-  const loadingTask = getDocument({ data: pdfBuffer })
-  const pdfDoc = await loadingTask.promise
+export async function getPdfPageCount(buffer: Buffer): Promise<number> {
+  try {
+    // Use pdf-parse to get page count
+    const { PDFParse } = await import('pdf-parse')
+    const pdfParser = new PDFParse({ data: new Uint8Array(buffer) })
+    const data = await pdfParser.getInfo()
 
-  return pdfDoc
+    return data.total
+  } catch (error) {
+    logger.error('Error getting PDF page count', error)
+    throw new Error('Failed to get PDF page count')
+  }
+}
+
+/**
+ * Determine if a PDF is scanned (image-based) by analyzing text content
+ * @param buffer - PDF file buffer
+ * @param pageCount - Number of pages in the PDF
+ * @returns True if PDF appears to be scanned (low text content)
+ */
+export async function isScannedPdf(
+  buffer: Buffer,
+  pageCount: number
+): Promise<boolean> {
+  try {
+    // Extract text from PDF
+    const textContent = await extractPdfText(buffer)
+
+    // Calculate average text length per page
+    const avgTextPerPage = textContent.length / pageCount
+
+    // Heuristic: If average text per page is less than 100 characters,
+    // it's likely a scanned PDF (images with little to no extractable text)
+    // This is a simplified approach; more sophisticated OCR detection could be added
+    const MIN_TEXT_PER_PAGE = 100
+
+    return avgTextPerPage < MIN_TEXT_PER_PAGE
+  } catch (error) {
+    logger.error('Error determining if PDF is scanned', error)
+    // If we can't determine, assume it's not scanned (safer default)
+    return false
+  }
+}
+
+/**
+ * Extract text content from a PDF file
+ * @param buffer - PDF file buffer
+ * @returns Extracted text content
+ */
+export async function extractPdfText(buffer: Buffer): Promise<string> {
+  try {
+    const { PDFParse } = await import('pdf-parse')
+    const pdfParser = new PDFParse({ data: new Uint8Array(buffer) })
+    const data = await pdfParser.getText()
+
+    return data.text || ''
+  } catch (error) {
+    logger.error('Error extracting PDF text', error)
+    throw new Error('Failed to extract PDF text')
+  }
+}
+
+/**
+ * Validate PDF file type
+ * @param mimeType - MIME type of the file
+ * @returns True if the file is a valid PDF
+ */
+export function isValidPdfType(mimeType: string): boolean {
+  return mimeType === 'application/pdf'
+}
+
+/**
+ * Validate PDF file size
+ * @param fileSize - Size of the file in bytes
+ * @param maxSize - Maximum allowed file size in bytes
+ * @returns True if file size is within limits
+ */
+export function isValidPdfSize(fileSize: number, maxSize: number): boolean {
+  return fileSize > 0 && fileSize <= maxSize
+}
+
+/**
+ * Validate CUID format (starts with 'c' followed by 24 alphanumeric characters)
+ * This prevents path traversal attacks by ensuring IDs are in expected format
+ * @param id - ID to validate
+ * @returns True if valid CUID format
+ */
+function isValidCuid(id: string): boolean {
+  // CUID format: c[a-z0-9]{24}
+  const cuidRegex = /^c[a-z0-9]{24}$/
+  return cuidRegex.test(id)
+}
+
+/**
+ * Generate a unique storage path for a PDF file
+ * Validates userId and courseId to prevent path traversal attacks
+ * @param userId - User ID (must be valid CUID)
+ * @param courseId - Course ID (must be valid CUID)
+ * @param fileName - Original file name
+ * @returns Unique storage path
+ * @throws Error if userId or courseId are not valid CUIDs
+ */
+export function generateStoragePath(
+  userId: string,
+  courseId: string,
+  fileName: string
+): string {
+  // Validate userId format to prevent path traversal
+  if (!isValidCuid(userId)) {
+    throw new Error('Invalid userId format: must be a valid CUID')
+  }
+
+  // Validate courseId format to prevent path traversal
+  if (!isValidCuid(courseId)) {
+    throw new Error('Invalid courseId format: must be a valid CUID')
+  }
+
+  const timestamp = Date.now()
+  const sanitizedFileName = fileName
+    .replace(/[^a-zA-Z0-9.-]/g, '_')
+    .toLowerCase()
+
+  return `${userId}/${courseId}/${timestamp}-${sanitizedFileName}`
 }

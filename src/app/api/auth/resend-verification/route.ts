@@ -1,100 +1,86 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
-import { isValidEmail, createAuthError, createAuthSuccess } from '@/lib/auth'
-import { AUTH_ERROR_CODES, type ResendVerificationRequest } from '@/types'
+import type { NextRequest } from 'next/server'
+import { z } from 'zod'
+import {
+  successResponse,
+  errorResponse,
+  HTTP_STATUS,
+  handleError,
+} from '@/lib/api-response'
+import { ERROR_CODES } from '@/lib/constants'
+import { generateVerificationToken, invalidateUserTokens } from '@/lib/token'
+import { sendVerificationEmail } from '@/lib/email'
+import { emailRateLimit } from '@/lib/rate-limit'
+import prisma from '@/lib/prisma'
 import { logger } from '@/lib/logger'
-import { authRateLimiter, getRateLimitKey } from '@/lib/rate-limit'
-import { getValidatedRedirectUrl } from '@/lib/url-validation'
-import { requireCsrf } from '@/lib/csrf'
+
+const resendSchema = z.object({
+  email: z.string().email('Invalid email format'),
+})
 
 export async function POST(request: NextRequest) {
   try {
-    // CSRF validation
-    const csrfError = await requireCsrf(request)
-    if (csrfError) return csrfError
+    // Parse and validate request body
+    const body = await request.json()
+    const validation = resendSchema.safeParse(body)
 
-    // Rate limiting
-    const ip = request.headers.get('x-forwarded-for') ?? request.headers.get('x-real-ip')
-    const rateLimitResult = authRateLimiter(getRateLimitKey(ip, undefined, 'resend-verification'))
+    if (!validation.success) {
+      return errorResponse(
+        ERROR_CODES.VALIDATION_ERROR,
+        'Validation failed',
+        HTTP_STATUS.BAD_REQUEST,
+        validation.error.errors
+      )
+    }
+
+    const { email: rawEmail } = validation.data
+    const email = rawEmail.toLowerCase().trim()
+
+    // Rate limiting by email
+    const rateLimitResult = await emailRateLimit(email)
     if (!rateLimitResult.allowed) {
-      return NextResponse.json(
-        createAuthError(AUTH_ERROR_CODES.RATE_LIMITED, 'Too many requests. Please try again later'),
-        { status: 429 }
+      return errorResponse(
+        ERROR_CODES.RATE_LIMIT_EXCEEDED,
+        'Too many verification email requests. Please try again later.',
+        HTTP_STATUS.TOO_MANY_REQUESTS
       )
     }
 
-    let body: ResendVerificationRequest
-    try {
-      body = await request.json()
-    } catch {
-      return NextResponse.json(
-        createAuthError(AUTH_ERROR_CODES.INVALID_CREDENTIALS, 'Invalid request body'),
-        { status: 400 }
-      )
-    }
-    const { email } = body
-
-    // Validate email format
-    if (!email || !isValidEmail(email)) {
-      return NextResponse.json(
-        createAuthError(
-          AUTH_ERROR_CODES.INVALID_EMAIL,
-          'Please enter a valid email address'
-        ),
-        { status: 400 }
-      )
-    }
-
-    const supabase = await createClient()
-
-    // Resend verification email via Supabase
-    const { error } = await supabase.auth.resend({
-      type: 'signup',
-      email,
-      options: {
-        emailRedirectTo: getValidatedRedirectUrl(
-          process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000',
-          '/login?verified=true'
-        ),
-      },
+    // Find user
+    const user = await prisma.user.findUnique({
+      where: { email },
     })
 
-    if (error) {
-      // Handle rate limiting
-      if (
-        error.message.includes('rate limit') ||
-        error.message.includes('too many')
-      ) {
-        return NextResponse.json(
-          createAuthError(
-            AUTH_ERROR_CODES.RATE_LIMITED,
-            'Too many requests. Please wait before requesting another email'
-          ),
-          { status: 429 }
-        )
-      }
-
-      logger.error('Resend verification error', error, { action: 'resend-verification' })
-      // Don't reveal if email exists or not for security
-      // Return success anyway
+    // Don't reveal if user exists or not (security)
+    if (!user) {
+      return successResponse({
+        message: 'If an account exists, a verification email has been sent.',
+      })
     }
 
-    // Always return success for security (don't reveal if email exists)
-    return NextResponse.json(
-      createAuthSuccess({
-        message:
-          'If an account with this email exists and is unverified, a verification email has been sent',
-      }),
-      { status: 200 }
-    )
+    // Check if already verified
+    if (user.emailConfirmedAt) {
+      return errorResponse(
+        ERROR_CODES.VALIDATION_ERROR,
+        'Email is already verified',
+        HTTP_STATUS.BAD_REQUEST
+      )
+    }
+
+    // Invalidate old verification tokens
+    await invalidateUserTokens(user.id, 'EMAIL_VERIFY')
+
+    // Generate new verification token
+    const { token } = await generateVerificationToken(user.id, 'EMAIL_VERIFY')
+
+    // Send verification email
+    await sendVerificationEmail(email, token)
+
+    logger.info('Verification email resent', { userId: user.id, email })
+
+    return successResponse({
+      message: 'Verification email has been sent. Please check your inbox.',
+    })
   } catch (error) {
-    logger.error('Resend verification error', error, { action: 'resend-verification' })
-    return NextResponse.json(
-      createAuthError(
-        AUTH_ERROR_CODES.INTERNAL_ERROR,
-        'An unexpected error occurred'
-      ),
-      { status: 500 }
-    )
+    return handleError(error)
   }
 }

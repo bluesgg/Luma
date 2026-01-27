@@ -1,159 +1,131 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
+import type { NextRequest } from 'next/server'
+import { registerSchema } from '@/lib/validation'
 import {
-  isValidEmail,
-  isValidPassword,
-  createAuthError,
-  createAuthSuccess,
-  createUserProfile,
-} from '@/lib/auth'
-import { AUTH_ERROR_CODES, type RegisterRequest } from '@/types'
+  successResponse,
+  errorResponse,
+  HTTP_STATUS,
+  handleError,
+} from '@/lib/api-response'
+import { ERROR_CODES, QUOTA_LIMITS } from '@/lib/constants'
+import { hashPassword } from '@/lib/password'
+import { generateVerificationToken } from '@/lib/token'
+import { sendVerificationEmail } from '@/lib/email'
+import { authRateLimit } from '@/lib/rate-limit'
+import prisma from '@/lib/prisma'
 import { logger } from '@/lib/logger'
-import { authRateLimiter, getRateLimitKey } from '@/lib/rate-limit'
-import { getValidatedRedirectUrl } from '@/lib/url-validation'
-import { requireCsrf } from '@/lib/csrf'
 
 export async function POST(request: NextRequest) {
   try {
-    // CSRF validation
-    const csrfError = await requireCsrf(request)
-    if (csrfError) return csrfError
+    // Parse and validate request body
+    const body = await request.json()
+    const validation = registerSchema.safeParse(body)
 
-    // Rate limiting
-    const ip = request.headers.get('x-forwarded-for') ?? request.headers.get('x-real-ip')
-    const rateLimitResult = authRateLimiter(getRateLimitKey(ip, undefined, 'register'))
+    if (!validation.success) {
+      return errorResponse(
+        ERROR_CODES.VALIDATION_ERROR,
+        'Validation failed',
+        HTTP_STATUS.BAD_REQUEST,
+        validation.error.errors
+      )
+    }
+
+    const { email: rawEmail, password } = validation.data
+
+    // Normalize email to lowercase and trim whitespace
+    const email = rawEmail.toLowerCase().trim()
+
+    // Rate limiting by email
+    const rateLimitResult = await authRateLimit(email)
     if (!rateLimitResult.allowed) {
-      return NextResponse.json(
-        createAuthError(AUTH_ERROR_CODES.RATE_LIMITED, 'Too many registration attempts. Please try again later'),
-        { status: 429 }
+      return errorResponse(
+        ERROR_CODES.RATE_LIMIT_EXCEEDED,
+        'Too many registration attempts. Please try again later.',
+        HTTP_STATUS.TOO_MANY_REQUESTS
       )
     }
 
-    let body: RegisterRequest
-    try {
-      body = await request.json()
-    } catch {
-      return NextResponse.json(
-        createAuthError(AUTH_ERROR_CODES.INVALID_CREDENTIALS, 'Invalid request body'),
-        { status: 400 }
-      )
-    }
-    const { email, password } = body
-
-    // Validate email format
-    if (!email || !isValidEmail(email)) {
-      return NextResponse.json(
-        createAuthError(
-          AUTH_ERROR_CODES.INVALID_EMAIL,
-          'Please enter a valid email address'
-        ),
-        { status: 400 }
-      )
-    }
-
-    // Validate password strength
-    if (!password || !isValidPassword(password)) {
-      return NextResponse.json(
-        createAuthError(
-          AUTH_ERROR_CODES.WEAK_PASSWORD,
-          'Password must be at least 8 characters'
-        ),
-        { status: 400 }
-      )
-    }
-
-    const supabase = await createClient()
-
-    // Attempt to sign up with Supabase
-    const { data, error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        emailRedirectTo: getValidatedRedirectUrl(
-          process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000',
-          '/login?verified=true'
-        ),
-      },
+    // Check if user already exists
+    const existingUser = await prisma.user.findUnique({
+      where: { email },
     })
 
-    if (error) {
-      // Handle specific Supabase errors
-      if (error.message.includes('already registered')) {
-        return NextResponse.json(
-          createAuthError(
-            AUTH_ERROR_CODES.EMAIL_EXISTS,
-            'An account with this email already exists'
-          ),
-          { status: 409 }
-        )
-      }
-
-      if (error.message.includes('rate limit')) {
-        return NextResponse.json(
-          createAuthError(
-            AUTH_ERROR_CODES.RATE_LIMITED,
-            'Too many requests. Please try again later'
-          ),
-          { status: 429 }
-        )
-      }
-
-      logger.error('Supabase signup error', error, { action: 'register' })
-      return NextResponse.json(
-        createAuthError(
-          AUTH_ERROR_CODES.INTERNAL_ERROR,
-          'Registration failed. Please try again'
-        ),
-        { status: 500 }
+    if (existingUser) {
+      return errorResponse(
+        ERROR_CODES.VALIDATION_ERROR,
+        'An account with this email already exists',
+        HTTP_STATUS.BAD_REQUEST
       )
     }
 
-    if (!data.user) {
-      return NextResponse.json(
-        createAuthError(
-          AUTH_ERROR_CODES.INTERNAL_ERROR,
-          'Registration failed. Please try again'
-        ),
-        { status: 500 }
-      )
-    }
+    // Hash password
+    const passwordHash = await hashPassword(password)
 
-    // Create profile and quota records
-    try {
-      await createUserProfile(data.user.id)
-    } catch (profileError) {
-      logger.error('Failed to create user profile', profileError, { action: 'register' })
-      // Return error - user should retry registration
-      return NextResponse.json(
-        createAuthError(
-          AUTH_ERROR_CODES.INTERNAL_ERROR,
-          'Registration failed. Please try again'
-        ),
-        { status: 500 }
-      )
-    }
+    // Create user and initialize quotas in a single transaction
+    // This ensures atomic creation - both user and quotas are created together
+    const user = await prisma.$transaction(async (tx) => {
+      // Create user
+      const newUser = await tx.user.create({
+        data: {
+          email,
+          passwordHash,
+          role: 'STUDENT',
+          failedLoginAttempts: 0,
+        },
+        select: {
+          id: true,
+          email: true,
+          role: true,
+          createdAt: true,
+          emailConfirmedAt: true,
+        },
+      })
 
-    return NextResponse.json(
-      createAuthSuccess({
+      // Initialize quotas within the same transaction
+      const now = new Date()
+      const resetAt = new Date(now.getFullYear(), now.getMonth() + 1, 1)
+      await tx.quota.createMany({
+        data: [
+          {
+            userId: newUser.id,
+            bucket: 'LEARNING_INTERACTIONS',
+            used: 0,
+            limit: QUOTA_LIMITS.LEARNING_INTERACTIONS,
+            resetAt,
+          },
+          {
+            userId: newUser.id,
+            bucket: 'AUTO_EXPLAIN',
+            used: 0,
+            limit: QUOTA_LIMITS.AUTO_EXPLAIN,
+            resetAt,
+          },
+        ],
+      })
+
+      logger.info('User and quotas created atomically', { userId: newUser.id })
+
+      return newUser
+    })
+
+    // Generate verification token
+    const { token } = await generateVerificationToken(user.id, 'EMAIL_VERIFY')
+
+    // Send verification email (don't wait for it to complete)
+    sendVerificationEmail(email, token).catch((error) => {
+      logger.error('Failed to send verification email', { error, email })
+    })
+
+    logger.info('User registered successfully', { userId: user.id, email })
+
+    return successResponse(
+      {
+        user,
         message:
           'Registration successful. Please check your email to verify your account.',
-        user: {
-          id: data.user.id,
-          email: data.user.email ?? '',
-          emailConfirmedAt: data.user.email_confirmed_at ?? null,
-          createdAt: data.user.created_at,
-        },
-      }),
-      { status: 201 }
+      },
+      HTTP_STATUS.CREATED
     )
   } catch (error) {
-    logger.error('Registration error', error, { action: 'register' })
-    return NextResponse.json(
-      createAuthError(
-        AUTH_ERROR_CODES.INTERNAL_ERROR,
-        'An unexpected error occurred'
-      ),
-      { status: 500 }
-    )
+    return handleError(error)
   }
 }

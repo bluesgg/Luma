@@ -1,112 +1,81 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
+import type { NextRequest } from 'next/server'
+import { confirmResetPasswordSchema } from '@/lib/validation'
 import {
-  isValidPassword,
-  createAuthError,
-  createAuthSuccess,
-  getCurrentUser,
-} from '@/lib/auth'
-import { AUTH_ERROR_CODES, type ConfirmResetRequest } from '@/types'
+  successResponse,
+  errorResponse,
+  HTTP_STATUS,
+  handleError,
+} from '@/lib/api-response'
+import { ERROR_CODES } from '@/lib/constants'
+import { hashPassword } from '@/lib/password'
+import { validateToken, markTokenAsUsed } from '@/lib/token'
+import prisma from '@/lib/prisma'
 import { logger } from '@/lib/logger'
-import { requireCsrf } from '@/lib/csrf'
-import { authRateLimiter, getRateLimitKey } from '@/lib/rate-limit'
 
 export async function POST(request: NextRequest) {
   try {
-    // CSRF validation
-    const csrfError = await requireCsrf(request)
-    if (csrfError) return csrfError
+    // Parse and validate request body
+    const body = await request.json()
+    const validation = confirmResetPasswordSchema.safeParse(body)
 
-    // Rate limiting
-    const ip = request.headers.get('x-forwarded-for') ?? request.headers.get('x-real-ip')
-    const rateLimitResult = authRateLimiter(getRateLimitKey(ip, undefined, 'confirm-reset'))
-    if (!rateLimitResult.allowed) {
-      return NextResponse.json(
-        createAuthError(AUTH_ERROR_CODES.RATE_LIMITED, 'Too many requests'),
-        { status: 429 }
+    if (!validation.success) {
+      return errorResponse(
+        ERROR_CODES.VALIDATION_ERROR,
+        'Validation failed',
+        HTTP_STATUS.BAD_REQUEST,
+        validation.error.errors
       )
     }
 
-    let body: ConfirmResetRequest
-    try {
-      body = await request.json()
-    } catch {
-      return NextResponse.json(
-        createAuthError(AUTH_ERROR_CODES.INVALID_CREDENTIALS, 'Invalid request body'),
-        { status: 400 }
-      )
-    }
-    const { password } = body
+    const { token, password } = validation.data
 
-    // Validate password strength
-    if (!password || !isValidPassword(password)) {
-      return NextResponse.json(
-        createAuthError(
-          AUTH_ERROR_CODES.WEAK_PASSWORD,
-          'Password must be at least 8 characters'
-        ),
-        { status: 400 }
+    // Validate token
+    const tokenValidation = await validateToken(token)
+
+    if (!tokenValidation.isValid || !tokenValidation.token) {
+      return errorResponse(
+        ERROR_CODES.AUTH_TOKEN_INVALID,
+        'Invalid or expired reset token',
+        HTTP_STATUS.BAD_REQUEST
       )
     }
 
-    // User should already be authenticated via the magic link
-    // The reset link creates a temporary session
-    const user = await getCurrentUser()
-
-    if (!user) {
-      return NextResponse.json(
-        createAuthError(
-          AUTH_ERROR_CODES.SESSION_EXPIRED,
-          'Password reset link has expired. Please request a new one'
-        ),
-        { status: 401 }
+    // Check that token is for password reset
+    if (tokenValidation.token.type !== 'PASSWORD_RESET') {
+      return errorResponse(
+        ERROR_CODES.AUTH_TOKEN_INVALID,
+        'Invalid token type',
+        HTTP_STATUS.BAD_REQUEST
       )
     }
 
-    const supabase = await createClient()
+    // Hash new password
+    const passwordHash = await hashPassword(password)
 
-    // Update the password
-    const { error } = await supabase.auth.updateUser({
-      password,
+    // Update user password and reset account lock
+    const user = await prisma.user.update({
+      where: { id: tokenValidation.token.userId },
+      data: {
+        passwordHash,
+        failedLoginAttempts: 0,
+        lockedUntil: null,
+      },
+      select: {
+        id: true,
+        email: true,
+      },
     })
 
-    if (error) {
-      logger.error('Update password error', error, { action: 'confirm-reset' })
+    // Mark token as used
+    await markTokenAsUsed(tokenValidation.token.id)
 
-      if (error.message.includes('same as')) {
-        return NextResponse.json(
-          createAuthError(
-            AUTH_ERROR_CODES.WEAK_PASSWORD,
-            'New password must be different from your current password'
-          ),
-          { status: 400 }
-        )
-      }
+    logger.info('Password reset successfully', { userId: user.id })
 
-      return NextResponse.json(
-        createAuthError(
-          AUTH_ERROR_CODES.INTERNAL_ERROR,
-          'Failed to update password. Please try again'
-        ),
-        { status: 500 }
-      )
-    }
-
-    return NextResponse.json(
-      createAuthSuccess({
-        message:
-          'Password updated successfully. Please log in with your new password.',
-      }),
-      { status: 200 }
-    )
+    return successResponse({
+      message:
+        'Password reset successful. Please log in with your new password.',
+    })
   } catch (error) {
-    logger.error('Confirm reset error', error, { action: 'confirm-reset' })
-    return NextResponse.json(
-      createAuthError(
-        AUTH_ERROR_CODES.INTERNAL_ERROR,
-        'An unexpected error occurred'
-      ),
-      { status: 500 }
-    )
+    return handleError(error)
   }
 }

@@ -1,132 +1,130 @@
-interface RateLimitRecord {
+import { RATE_LIMITS } from './constants'
+
+/**
+ * In-memory rate limiter (for development)
+ * TODO: Replace with Redis/Upstash for production
+ */
+
+interface RateLimitConfig {
+  windowMs: number
+  maxRequests: number
+}
+
+interface RateLimitEntry {
   count: number
   resetTime: number
 }
 
-interface RateLimitConfig {
-  windowMs: number // Time window in milliseconds
-  maxRequests: number // Max requests per window
-}
+const store = new Map<string, RateLimitEntry>()
 
-interface RateLimitResult {
+/**
+ * Check if a request should be rate limited
+ */
+export async function checkRateLimit(
+  key: string,
+  config: RateLimitConfig
+): Promise<{
   allowed: boolean
   remaining: number
   resetTime: number
-}
+}> {
+  // Trigger periodic cleanup
+  maybeCleanup()
 
-/**
- * In-memory store for rate limiting.
- *
- * PRODUCTION WARNING: This in-memory implementation does NOT work correctly
- * with multiple serverless instances (e.g., Vercel). Each instance maintains
- * its own memory, allowing attackers to bypass rate limits by hitting different instances.
- *
- * For production deployments, replace with:
- * - Upstash Redis (@upstash/ratelimit) for serverless
- * - Redis Cluster for traditional deployments
- * - Or use Vercel's built-in rate limiting if available
- *
- * @see https://upstash.com/docs/redis/sdks/ratelimit-ts/overview
- */
-const rateLimitStore = new Map<string, RateLimitRecord>()
-
-// Cleanup old entries periodically to prevent memory leaks
-const CLEANUP_INTERVAL = 60 * 1000 // 1 minute
-let lastCleanup = Date.now()
-
-function cleanupExpiredEntries(): void {
   const now = Date.now()
-  if (now - lastCleanup < CLEANUP_INTERVAL) return
+  const entry = store.get(key)
 
-  for (const [key, record] of rateLimitStore.entries()) {
-    if (now > record.resetTime) {
-      rateLimitStore.delete(key)
-    }
-  }
-  lastCleanup = now
-}
+  // If no entry or expired, create new one
+  if (!entry || now > entry.resetTime) {
+    const resetTime = now + config.windowMs
+    store.set(key, { count: 1, resetTime })
 
-/**
- * Create a rate limiter with the given configuration
- */
-export function createRateLimiter(config: RateLimitConfig) {
-  return function checkRateLimit(key: string): RateLimitResult {
-    cleanupExpiredEntries()
-
-    const now = Date.now()
-    const record = rateLimitStore.get(key)
-
-    // No existing record or window expired - create new record
-    if (!record || now > record.resetTime) {
-      const newRecord: RateLimitRecord = {
-        count: 1,
-        resetTime: now + config.windowMs,
-      }
-      rateLimitStore.set(key, newRecord)
-      return {
-        allowed: true,
-        remaining: config.maxRequests - 1,
-        resetTime: newRecord.resetTime,
-      }
-    }
-
-    // Check if limit exceeded
-    if (record.count >= config.maxRequests) {
-      return {
-        allowed: false,
-        remaining: 0,
-        resetTime: record.resetTime,
-      }
-    }
-
-    // Increment count
-    record.count++
     return {
       allowed: true,
-      remaining: config.maxRequests - record.count,
-      resetTime: record.resetTime,
+      remaining: config.maxRequests - 1,
+      resetTime,
+    }
+  }
+
+  // Check if limit exceeded
+  if (entry.count >= config.maxRequests) {
+    return {
+      allowed: false,
+      remaining: 0,
+      resetTime: entry.resetTime,
+    }
+  }
+
+  // Increment count
+  entry.count++
+  store.set(key, entry)
+
+  return {
+    allowed: true,
+    remaining: config.maxRequests - entry.count,
+    resetTime: entry.resetTime,
+  }
+}
+
+/**
+ * Rate limit for authentication endpoints
+ */
+export async function authRateLimit(identifier: string) {
+  return checkRateLimit(`auth:${identifier}`, RATE_LIMITS.AUTH)
+}
+
+/**
+ * Rate limit for API endpoints
+ */
+export async function apiRateLimit(identifier: string) {
+  return checkRateLimit(`api:${identifier}`, RATE_LIMITS.API)
+}
+
+/**
+ * Rate limit for AI endpoints
+ */
+export async function aiRateLimit(identifier: string) {
+  return checkRateLimit(`ai:${identifier}`, RATE_LIMITS.AI)
+}
+
+/**
+ * Rate limit for email sending
+ */
+export async function emailRateLimit(identifier: string) {
+  return checkRateLimit(`email:${identifier}`, RATE_LIMITS.EMAIL)
+}
+
+/**
+ * Clear rate limit for a key (useful for testing)
+ */
+export function clearRateLimit(key: string): void {
+  store.delete(key)
+}
+
+/**
+ * Clean up expired entries on-demand
+ */
+export function cleanupExpiredEntries(): void {
+  const now = Date.now()
+  for (const [key, entry] of store.entries()) {
+    if (now > entry.resetTime) {
+      store.delete(key)
     }
   }
 }
 
-// Pre-configured rate limiters for common use cases
+// Track last cleanup time
+let lastCleanup = Date.now()
+const CLEANUP_INTERVAL = 5 * 60 * 1000 // 5 minutes
 
 /**
- * Auth rate limiter: 10 requests per 15 minutes
- * For login, register, password reset endpoints
+ * Trigger cleanup if enough time has passed
+ * This approach avoids memory leaks from setInterval
  */
-export const authRateLimiter = createRateLimiter({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  maxRequests: 10,
-})
-
-/**
- * API rate limiter: 100 requests per minute
- * For general API endpoints
- */
-export const apiRateLimiter = createRateLimiter({
-  windowMs: 60 * 1000, // 1 minute
-  maxRequests: 100,
-})
-
-/**
- * AI rate limiter: 20 requests per minute
- * For AI endpoints (stricter due to cost)
- */
-export const aiRateLimiter = createRateLimiter({
-  windowMs: 60 * 1000, // 1 minute
-  maxRequests: 20,
-})
-
-/**
- * Get rate limit key from request
- * Uses IP address or user ID if available
- */
-export function getRateLimitKey(
-  ip: string | null,
-  userId?: string,
-  endpoint?: string
-): string {
-  const identifier = userId ?? ip ?? 'anonymous'
-  return endpoint ? `${endpoint}:${identifier}` : identifier
+function maybeCleanup(): void {
+  const now = Date.now()
+  if (now - lastCleanup > CLEANUP_INTERVAL) {
+    cleanupExpiredEntries()
+    lastCleanup = now
+  }
 }

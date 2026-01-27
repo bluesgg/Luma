@@ -1,27 +1,24 @@
 import type { Metadata } from 'next'
 import { ForgotPasswordForm } from '@/components/auth/forgot-password-form'
-import { BookOpen } from 'lucide-react'
+
+export const dynamic = 'force-dynamic'
 
 export const metadata: Metadata = {
   title: 'Forgot Password - Luma',
-  description: 'Reset your Luma account password.',
+  description: 'Reset your Luma password',
 }
 
 export default function ForgotPasswordPage() {
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center bg-slate-50 p-4">
-      {/* Branding */}
-      <div className="mb-8 flex items-center gap-2">
-        <BookOpen className="h-8 w-8 text-indigo-600" aria-hidden="true" />
-        <span className="font-heading text-3xl font-bold text-slate-800">Luma</span>
+    <div className="space-y-6">
+      <div>
+        <h2 className="text-2xl font-bold text-gray-900">Forgot password?</h2>
+        <p className="mt-2 text-sm text-gray-600">
+          No worries, we&apos;ll send you reset instructions
+        </p>
       </div>
 
       <ForgotPasswordForm />
-
-      {/* Footer */}
-      <p className="mt-8 text-sm text-slate-500">
-        AI-Powered PDF Learning Assistant
-      </p>
     </div>
   )
 }

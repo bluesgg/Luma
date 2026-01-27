@@ -1,202 +1,117 @@
-import { createServiceClient } from '@/lib/supabase/server'
-import { storageConfig } from '@/lib/env'
-import { STORAGE } from '@/lib/constants'
-import { prisma } from '@/lib/prisma'
-import { FILE_ERROR_CODES } from '@/types'
+import { createClient } from '@/lib/supabase/server'
 
 /**
- * Storage path format: {userId}/{courseId}/{fileId}.pdf
+ * Storage utility functions for Supabase Storage
  */
-export function buildStoragePath(userId: string, courseId: string, fileId: string): string {
-  return `${userId}/${courseId}/${fileId}.pdf`
-}
+
+const STORAGE_BUCKET = 'pdfs'
 
 /**
- * Check if a file would exceed storage limits
+ * Get a signed upload URL for a file
  */
-export async function checkStorageLimits(
-  userId: string,
-  courseId: string,
-  fileSize: number,
-  fileName: string
-): Promise<{ allowed: boolean; error?: { code: string; message: string } }> {
-  // Check single file size limit (200MB)
-  if (fileSize > STORAGE.MAX_FILE_SIZE) {
-    return {
-      allowed: false,
-      error: {
-        code: FILE_ERROR_CODES.TOO_LARGE,
-        message: `File size exceeds maximum allowed (${STORAGE.MAX_FILE_SIZE / 1024 / 1024}MB)`,
-      },
-    }
-  }
+export async function getUploadUrl(
+  filePath: string,
+  _expiresIn: number = 3600
+): Promise<{ url: string; error: Error | null }> {
+  try {
+    const supabase = await createClient()
 
-  // Check files per course limit (30)
-  const courseFileCount = await prisma.file.count({
-    where: { courseId },
-  })
-  if (courseFileCount >= STORAGE.MAX_FILES_PER_COURSE) {
-    return {
-      allowed: false,
-      error: {
-        code: FILE_ERROR_CODES.LIMIT_EXCEEDED,
-        message: `Course has reached maximum file limit (${STORAGE.MAX_FILES_PER_COURSE})`,
-      },
-    }
-  }
+    const { data, error } = await supabase.storage
+      .from(STORAGE_BUCKET)
+      .createSignedUploadUrl(filePath, {
+        upsert: false,
+      })
 
-  // Check user total storage limit (5GB)
-  const userStorageUsed = await prisma.file.aggregate({
-    where: { userId },
-    _sum: { fileSize: true },
-  })
-  const totalUsed = Number(userStorageUsed._sum.fileSize ?? 0)
-  if (totalUsed + fileSize > STORAGE.MAX_USER_STORAGE) {
-    return {
-      allowed: false,
-      error: {
-        code: FILE_ERROR_CODES.STORAGE_EXCEEDED,
-        message: `Storage quota exceeded (${STORAGE.MAX_USER_STORAGE / 1024 / 1024 / 1024}GB limit)`,
-      },
-    }
-  }
+    if (error) throw error
 
-  // Check duplicate file name in same course
-  const existingFile = await prisma.file.findUnique({
-    where: {
-      courseId_name: {
-        courseId,
-        name: fileName,
-      },
-    },
-  })
-  if (existingFile) {
-    return {
-      allowed: false,
-      error: {
-        code: FILE_ERROR_CODES.NAME_EXISTS,
-        message: 'A file with this name already exists in this course',
-      },
-    }
-  }
-
-  return { allowed: true }
-}
-
-/**
- * Generate a signed upload URL for direct browser upload
- * URL expires in 1 hour
- */
-export async function createSignedUploadUrl(
-  storagePath: string
-): Promise<{ signedUrl: string; token: string } | null> {
-  const supabase = createServiceClient()
-  const bucket = storageConfig.bucket
-
-  const { data, error } = await supabase.storage
-    .from(bucket)
-    .createSignedUploadUrl(storagePath)
-
-  if (error || !data) {
-    return null
-  }
-
-  return {
-    signedUrl: data.signedUrl,
-    token: data.token,
+    return { url: data.signedUrl, error: null }
+  } catch (error) {
+    return { url: '', error: error as Error }
   }
 }
 
 /**
- * Generate a signed download URL
- * URL expires in 1 hour (3600 seconds)
+ * Get a signed download URL for a file
  */
-export async function createSignedDownloadUrl(
-  storagePath: string,
+export async function getDownloadUrl(
+  filePath: string,
   expiresIn: number = 3600
-): Promise<string | null> {
-  const supabase = createServiceClient()
-  const bucket = storageConfig.bucket
+): Promise<{ url: string; error: Error | null }> {
+  try {
+    const supabase = await createClient()
 
-  const { data, error } = await supabase.storage
-    .from(bucket)
-    .createSignedUrl(storagePath, expiresIn)
+    const { data, error } = await supabase.storage
+      .from(STORAGE_BUCKET)
+      .createSignedUrl(filePath, expiresIn)
 
-  if (error || !data) {
-    return null
+    if (error) throw error
+
+    return { url: data.signedUrl, error: null }
+  } catch (error) {
+    return { url: '', error: error as Error }
   }
-
-  return data.signedUrl
 }
 
 /**
  * Delete a file from storage
  */
-export async function deleteStorageFile(storagePath: string): Promise<boolean> {
-  const supabase = createServiceClient()
-  const bucket = storageConfig.bucket
+export async function deleteFile(
+  filePath: string
+): Promise<{ error: Error | null }> {
+  try {
+    const supabase = await createClient()
 
-  const { error } = await supabase.storage.from(bucket).remove([storagePath])
+    const { error } = await supabase.storage
+      .from(STORAGE_BUCKET)
+      .remove([filePath])
 
-  return !error
+    if (error) throw error
+
+    return { error: null }
+  } catch (error) {
+    return { error: error as Error }
+  }
 }
 
 /**
- * Check if a file exists in storage
+ * Get file metadata
  */
-export async function fileExistsInStorage(storagePath: string): Promise<boolean> {
-  const supabase = createServiceClient()
-  const bucket = storageConfig.bucket
+export async function getFileMetadata(filePath: string): Promise<{
+  size?: number
+  mimeType?: string
+  error: Error | null
+}> {
+  try {
+    const supabase = await createClient()
 
-  // Try to get file metadata
-  const { data, error } = await supabase.storage.from(bucket).list(
-    storagePath.split('/').slice(0, -1).join('/'),
-    {
-      limit: 1,
-      search: storagePath.split('/').pop(),
+    const { data, error } = await supabase.storage
+      .from(STORAGE_BUCKET)
+      .list(filePath.split('/').slice(0, -1).join('/'), {
+        search: filePath.split('/').pop(),
+      })
+
+    if (error) throw error
+
+    const file = data?.[0]
+
+    if (!file) {
+      throw new Error('File not found')
     }
-  )
 
-  if (error || !data) {
-    return false
+    return {
+      size: file.metadata?.size,
+      mimeType: file.metadata?.mimetype,
+      error: null,
+    }
+  } catch (error) {
+    return { error: error as Error }
   }
-
-  const fileName = storagePath.split('/').pop()
-  return data.some((file) => file.name === fileName)
 }
 
 /**
- * Download a file from storage (for server-side processing)
+ * Check if a file exists
  */
-export async function downloadFile(storagePath: string): Promise<ArrayBuffer | null> {
-  const supabase = createServiceClient()
-  const bucket = storageConfig.bucket
-
-  const { data, error } = await supabase.storage.from(bucket).download(storagePath)
-
-  if (error || !data) {
-    return null
-  }
-
-  return await data.arrayBuffer()
-}
-
-/**
- * Detect if a PDF is a scanned document (placeholder implementation)
- * In a real implementation, this would use pdf.js to check text content
- */
-export async function detectScannedPdf(_pdfBuffer: ArrayBuffer): Promise<boolean> {
-  // Placeholder: MVP returns false (not scanned)
-  // Full implementation would sample pages and check text content ratio
-  return false
-}
-
-/**
- * Get PDF page count (placeholder implementation)
- * In a real implementation, this would use pdf.js
- */
-export async function getPdfPageCount(_pdfBuffer: ArrayBuffer): Promise<number | null> {
-  // Placeholder: MVP returns null (unknown)
-  // Full implementation would parse PDF and count pages
-  return null
+export async function fileExists(filePath: string): Promise<boolean> {
+  const { error } = await getFileMetadata(filePath)
+  return !error
 }

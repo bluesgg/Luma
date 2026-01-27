@@ -1,185 +1,154 @@
+/**
+ * Shared TypeScript type definitions
+ */
+
 import type {
-  Profile,
+  User,
   Course,
   File,
-  Explanation,
-  QA,
+  TopicGroup,
+  SubTopic,
+  TopicTest,
+  LearningSession,
+  TopicProgress,
+  SubTopicProgress,
   Quota,
+  UserPreference,
+  Admin,
+  UserRole,
   FileStatus,
+  FileType,
+  StructureStatus,
+  TopicType,
+  QuestionType,
+  SessionStatus,
+  LearningPhase,
+  ProgressStatus,
   QuotaBucket,
-  Locale,
 } from '@prisma/client'
 
 // Re-export Prisma types
-export type { Profile, Course, File, Explanation, QA, Quota, FileStatus, QuotaBucket, Locale }
+export type {
+  User,
+  Course,
+  File,
+  TopicGroup,
+  SubTopic,
+  TopicTest,
+  LearningSession,
+  TopicProgress,
+  SubTopicProgress,
+  Quota,
+  UserPreference,
+  Admin,
+  UserRole,
+  FileStatus,
+  FileType,
+  StructureStatus,
+  TopicType,
+  QuestionType,
+  SessionStatus,
+  LearningPhase,
+  ProgressStatus,
+  QuotaBucket,
+}
 
 // Extended types with relations
 export type CourseWithFiles = Course & {
   files: File[]
-  _count: { files: number }
-}
-
-// Course list item for display purposes
-export interface CourseListItem {
-  id: string
-  name: string
-  school?: string | null
-  term?: string | null
-  _count: { files: number }
-}
-
-export type FileWithExplanations = File & {
-  explanations: Explanation[]
-  course: Course
-}
-
-// API Response types
-export interface ApiResponse<T> {
-  data: T
-}
-
-export interface ApiError {
-  error: {
-    code: string
-    message: string
+  _count?: {
+    files: number
   }
 }
 
-export interface PaginatedResponse<T> {
-  data: T[]
-  pagination: {
-    page: number
-    pageSize: number
-    total: number
+export type FileWithTopics = File & {
+  topicGroups: TopicGroup[]
+  _count?: {
+    topicGroups: number
   }
 }
 
-// User preferences
-export interface UserPreferences {
-  uiLocale: Locale
-  explainLocale: Locale
+export type TopicGroupWithSubTopics = TopicGroup & {
+  subTopics: SubTopic[]
+  tests: TopicTest[]
 }
 
-// ============================================
-// Auth Types
-// ============================================
-
-// Auth Request Types
-export interface RegisterRequest {
-  email: string
-  password: string
+export type LearningSessionWithProgress = LearningSession & {
+  topicProgress: TopicProgress[]
+  subTopicProgress: SubTopicProgress[]
+  file: FileWithTopics
 }
 
-export interface LoginRequest {
-  email: string
-  password: string
-  rememberMe?: boolean
+export type UserWithQuotas = User & {
+  quotas: Quota[]
+  preference: UserPreference | null
 }
 
-export interface ResendVerificationRequest {
-  email: string
+// API Types
+export type PaginationParams = {
+  page: number
+  pageSize: number
 }
 
-export interface ResetPasswordRequest {
-  email: string
+export type PaginatedResponse<T> = {
+  items: T[]
+  total: number
+  page: number
+  pageSize: number
+  totalPages: number
 }
 
-export interface ConfirmResetRequest {
-  password: string
+// UI State Types
+export type LoadingState = 'idle' | 'loading' | 'success' | 'error'
+
+export type QuotaStatus = {
+  bucket: QuotaBucket
+  used: number
+  limit: number
+  percentage: number
+  color: 'success' | 'warning' | 'destructive'
 }
 
-// Auth Response Types
-export interface AuthUser {
-  id: string
-  email: string
-  emailConfirmedAt: string | null
-  createdAt: string
-}
-
-export interface AuthResponse {
-  user: AuthUser
-  profile: {
-    userId: string
-    role: string
-    createdAt: string
-    updatedAt: string
+export type QuotaStatusResponse = {
+  learningInteractions: {
+    used: number
+    limit: number
+    remaining: number
+    percentage: number
+    resetAt: string // Changed from Date to string for proper JSON serialization
+    status: 'green' | 'yellow' | 'red'
+  }
+  autoExplain: {
+    used: number
+    limit: number
+    remaining: number
+    percentage: number
+    resetAt: string // Changed from Date to string for proper JSON serialization
+    status: 'green' | 'yellow' | 'red'
   }
 }
 
-// Auth Error Codes
-export const AUTH_ERROR_CODES = {
-  INVALID_EMAIL: 'AUTH_INVALID_EMAIL',
-  WEAK_PASSWORD: 'AUTH_WEAK_PASSWORD',
-  EMAIL_EXISTS: 'AUTH_EMAIL_EXISTS',
-  INVALID_CREDENTIALS: 'AUTH_INVALID_CREDENTIALS',
-  EMAIL_NOT_VERIFIED: 'AUTH_EMAIL_NOT_VERIFIED',
-  USER_NOT_FOUND: 'AUTH_USER_NOT_FOUND',
-  RATE_LIMITED: 'AUTH_RATE_LIMITED',
-  SESSION_EXPIRED: 'AUTH_SESSION_EXPIRED',
-  INTERNAL_ERROR: 'AUTH_INTERNAL_ERROR',
-  CSRF_INVALID: 'AUTH_CSRF_INVALID',
-  CSRF_MISSING: 'AUTH_CSRF_MISSING',
-} as const
-
-export type AuthErrorCode = (typeof AUTH_ERROR_CODES)[keyof typeof AUTH_ERROR_CODES]
-
-// Course Error Codes
-export const COURSE_ERROR_CODES = {
-  LIMIT_EXCEEDED: 'COURSE_LIMIT_EXCEEDED',
-  NAME_EXISTS: 'COURSE_NAME_EXISTS',
-  NOT_FOUND: 'COURSE_NOT_FOUND',
-  VALIDATION_ERROR: 'COURSE_VALIDATION_ERROR',
-} as const
-
-export type CourseErrorCode = (typeof COURSE_ERROR_CODES)[keyof typeof COURSE_ERROR_CODES]
-
-// File Error Codes
-export const FILE_ERROR_CODES = {
-  TOO_LARGE: 'FILE_TOO_LARGE',
-  TOO_MANY_PAGES: 'FILE_TOO_MANY_PAGES',
-  LIMIT_EXCEEDED: 'FILE_LIMIT_EXCEEDED',
-  NAME_EXISTS: 'FILE_NAME_EXISTS',
-  NOT_FOUND: 'FILE_NOT_FOUND',
-  STORAGE_EXCEEDED: 'FILE_STORAGE_EXCEEDED',
-  INVALID_TYPE: 'FILE_INVALID_TYPE',
-  VALIDATION_ERROR: 'FILE_VALIDATION_ERROR',
-} as const
-
-export type FileErrorCode = (typeof FILE_ERROR_CODES)[keyof typeof FILE_ERROR_CODES]
-
-// AI Error Codes
-export const AI_ERROR_CODES = {
-  QUOTA_EXCEEDED: 'AI_QUOTA_EXCEEDED',
-  FILE_NOT_READY: 'AI_FILE_NOT_READY',
-  DISABLED_SCANNED: 'AI_DISABLED_SCANNED',
-  SERVICE_ERROR: 'AI_SERVICE_ERROR',
-  SERVICE_TIMEOUT: 'AI_SERVICE_TIMEOUT',
-  VALIDATION_ERROR: 'AI_VALIDATION_ERROR',
-} as const
-
-export type AIErrorCode = (typeof AI_ERROR_CODES)[keyof typeof AI_ERROR_CODES]
-
-// Admin Error Codes
-export const ADMIN_ERROR_CODES = {
-  UNAUTHORIZED: 'ADMIN_UNAUTHORIZED',
-  NOT_FOUND: 'ADMIN_NOT_FOUND',
-} as const
-
-export type AdminErrorCode = (typeof ADMIN_ERROR_CODES)[keyof typeof ADMIN_ERROR_CODES]
-
-// All Error Codes Union
-export type AppErrorCode = AuthErrorCode | CourseErrorCode | FileErrorCode | AIErrorCode | AdminErrorCode
-
-// Unified API Response Types
-export interface ApiSuccessResponse<T> {
-  success: true
-  data: T
+// File Upload Types
+export type UploadProgress = {
+  fileId: string
+  fileName: string
+  progress: number
+  status: 'uploading' | 'processing' | 'completed' | 'error'
+  error?: string
 }
 
-export interface ApiErrorResponse {
-  success: false
-  error: {
-    code: string
-    message: string
-  }
+// Learning Types
+// Re-export from database.ts
+export type { SubTopicExplanation, ExplanationLayer } from './database'
+
+export type TestQuestion = TopicTest & {
+  userAnswer?: string
+  isCorrect?: boolean
+  attempts?: number
 }
+
+// Utility Types
+export type Nullable<T> = T | null
+export type Optional<T> = T | undefined
+export type RequiredBy<T, K extends keyof T> = Omit<T, K> & Required<Pick<T, K>>
+export type PartialBy<T, K extends keyof T> = Omit<T, K> & Partial<Pick<T, K>>

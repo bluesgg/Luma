@@ -1,96 +1,84 @@
 'use client'
 
 import { useState } from 'react'
-import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { Mail, Lock, Loader2, AlertCircle } from 'lucide-react'
-import {
-  Form,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormControl,
-  FormMessage,
-  FormDescription,
-} from '@/components/ui/form'
-import { Input } from '@/components/ui/input'
+import Link from 'next/link'
+import { Eye, EyeOff, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import { Alert, AlertDescription } from '@/components/ui/alert'
-import {
-  Card,
-  CardHeader,
-  CardTitle,
-  CardDescription,
-  CardContent,
-  CardFooter,
-} from '@/components/ui/card'
-import { PasswordStrengthIndicator } from '@/components/ui/password-strength-indicator'
-import { useCsrf } from '@/hooks/use-csrf'
-import { AUTH } from '@/lib/constants'
+import { PasswordStrengthIndicator } from '@/components/auth/password-strength-indicator'
+import { registerSchema } from '@/lib/validation'
+import { useToast } from '@/hooks/use-toast'
 
-const registerSchema = z.object({
-  email: z.string().email('Please enter a valid email address'),
-  password: z
-    .string()
-    .min(AUTH.PASSWORD_MIN_LENGTH, `Password must be at least ${AUTH.PASSWORD_MIN_LENGTH} characters`),
-  confirmPassword: z.string(),
-}).refine((data) => data.password === data.confirmPassword, {
-  message: 'Passwords do not match',
-  path: ['confirmPassword'],
-})
-
-type RegisterFormData = z.infer<typeof registerSchema>
-
-export function RegisterForm() {
-  const [error, setError] = useState<string | null>(null)
-  const [success, setSuccess] = useState(false)
-  const [isLoading, setIsLoading] = useState(false)
-  const { getHeaders, isLoading: isCsrfLoading, error: csrfError } = useCsrf()
-
-  const isSubmitDisabled = isLoading || isCsrfLoading
-
-  const form = useForm<RegisterFormData>({
-    resolver: zodResolver(registerSchema),
-    defaultValues: {
-      email: '',
-      password: '',
-      confirmPassword: '',
-    },
+const registerWithConfirmSchema = registerSchema
+  .extend({
+    confirmPassword: z.string(),
+  })
+  .refine((data) => data.password === data.confirmPassword, {
+    message: "Passwords don't match",
+    path: ['confirmPassword'],
   })
 
-  const watchedPassword = form.watch('password')
+type RegisterFormData = z.infer<typeof registerWithConfirmSchema>
 
-  async function onSubmit(data: RegisterFormData) {
-    setIsLoading(true)
-    setError(null)
+export function RegisterForm() {
+  const router = useRouter()
+  const { toast } = useToast()
+  const [showPassword, setShowPassword] = useState(false)
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false)
+  const [isLoading, setIsLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [success, setSuccess] = useState(false)
 
+  const {
+    register,
+    handleSubmit,
+    watch,
+    formState: { errors },
+  } = useForm<RegisterFormData>({
+    resolver: zodResolver(registerWithConfirmSchema),
+  })
+
+  const password = watch('password')
+
+  const onSubmit = async (data: RegisterFormData) => {
     try {
+      setIsLoading(true)
+      setError(null)
+
       const response = await fetch('/api/auth/register', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...getHeaders(),
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           email: data.email,
           password: data.password,
         }),
-        credentials: 'include',
       })
 
       const result = await response.json()
 
-      if (!result.success) {
-        setError(result.error?.message || 'Registration failed. Please try again.')
+      if (!response.ok) {
+        setError(result.error?.message || 'Registration failed')
         return
       }
 
       setSuccess(true)
-    } catch (err) {
-      console.error('Registration error:', err)
-      setError('An unexpected error occurred. Please try again.')
+      toast({
+        title: 'Success',
+        description: 'Please check your email to verify your account',
+      })
+
+      // Redirect to login after 3 seconds (no cleanup needed as component will unmount)
+      setTimeout(() => {
+        router.push('/login')
+      }, 3000)
+    } catch {
+      setError('An unexpected error occurred')
     } finally {
       setIsLoading(false)
     }
@@ -98,170 +86,110 @@ export function RegisterForm() {
 
   if (success) {
     return (
-      <Card className="w-full max-w-md border border-slate-200 bg-white shadow-sm">
-        <CardHeader className="space-y-1">
-          <CardTitle className="font-heading text-2xl font-bold text-slate-800">
-            Check your email
-          </CardTitle>
-          <CardDescription className="text-slate-600">
-            We&apos;ve sent you a verification link
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <Alert className="border-indigo-200 bg-indigo-50 text-indigo-700">
-            <AlertDescription>
-              Please check your email and click the verification link to activate
-              your account. The link will expire in 24 hours.
-            </AlertDescription>
-          </Alert>
-          <p className="text-sm text-slate-500">
-            Didn&apos;t receive the email? Check your spam folder or{' '}
-            <Link
-              href="/resend-verification"
-              className="text-indigo-600 transition-colors duration-200 hover:text-indigo-700 hover:underline"
-            >
-              request a new link
-            </Link>
-            .
-          </p>
-        </CardContent>
-        <CardFooter>
-          <Button
-            variant="outline"
-            className="w-full cursor-pointer transition-colors duration-200"
-            asChild
-          >
-            <Link href="/login">Back to sign in</Link>
-          </Button>
-        </CardFooter>
-      </Card>
+      <div className="space-y-4">
+        <Alert>
+          <AlertDescription>
+            Registration successful! Please check your email to verify your
+            account. You&apos;ll be redirected to the login page shortly.
+          </AlertDescription>
+        </Alert>
+      </div>
     )
   }
 
   return (
-    <Card className="w-full max-w-md border border-slate-200 bg-white shadow-sm">
-      <CardHeader className="space-y-1">
-        <CardTitle className="font-heading text-2xl font-bold text-slate-800">
-          Create an account
-        </CardTitle>
-        <CardDescription className="text-slate-600">
-          Enter your email and create a password to get started
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
-        {csrfError && (
-          <Alert variant="destructive" className="mb-4 border-red-200 bg-red-50 text-red-700" role="alert">
-            <AlertCircle className="h-4 w-4" aria-hidden="true" />
-            <AlertDescription>
-              Security token failed to load. Please refresh the page.
-            </AlertDescription>
-          </Alert>
+    <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
+      {error && (
+        <Alert variant="destructive">
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
+      )}
+
+      <div className="space-y-2">
+        <Label htmlFor="email">Email</Label>
+        <Input
+          id="email"
+          type="email"
+          placeholder="your@email.com"
+          autoComplete="email"
+          {...register('email')}
+          disabled={isLoading}
+        />
+        {errors.email && (
+          <p className="text-sm text-red-600">{errors.email.message}</p>
         )}
-        {error && (
-          <Alert variant="destructive" className="mb-4 border-red-200 bg-red-50 text-red-700" role="alert">
-            <AlertCircle className="h-4 w-4" aria-hidden="true" />
-            <AlertDescription>{error}</AlertDescription>
-          </Alert>
-        )}
-        <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-            <FormField
-              control={form.control}
-              name="email"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel className="text-slate-700">Email</FormLabel>
-                  <div className="relative">
-                    <Mail className="pointer-events-none absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" aria-hidden="true" />
-                    <FormControl>
-                      <Input
-                        type="email"
-                        placeholder="you@example.com"
-                        autoComplete="email"
-                        disabled={isSubmitDisabled}
-                        className="pl-10 transition-colors duration-200 focus:ring-2 focus:ring-indigo-500"
-                        {...field}
-                      />
-                    </FormControl>
-                  </div>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-            <FormField
-              control={form.control}
-              name="password"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel className="text-slate-700">Password</FormLabel>
-                  <div className="relative">
-                    <Lock className="pointer-events-none absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" aria-hidden="true" />
-                    <FormControl>
-                      <Input
-                        type="password"
-                        placeholder="Create a password"
-                        autoComplete="new-password"
-                        disabled={isSubmitDisabled}
-                        className="pl-10 transition-colors duration-200 focus:ring-2 focus:ring-indigo-500"
-                        {...field}
-                      />
-                    </FormControl>
-                  </div>
-                  <FormDescription className="text-slate-500">
-                    Must be at least {AUTH.PASSWORD_MIN_LENGTH} characters
-                  </FormDescription>
-                  {watchedPassword && (
-                    <PasswordStrengthIndicator password={watchedPassword} showCriteria />
-                  )}
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-            <FormField
-              control={form.control}
-              name="confirmPassword"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel className="text-slate-700">Confirm password</FormLabel>
-                  <div className="relative">
-                    <Lock className="pointer-events-none absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" aria-hidden="true" />
-                    <FormControl>
-                      <Input
-                        type="password"
-                        placeholder="Confirm your password"
-                        autoComplete="new-password"
-                        disabled={isSubmitDisabled}
-                        className="pl-10 transition-colors duration-200 focus:ring-2 focus:ring-indigo-500"
-                        {...field}
-                      />
-                    </FormControl>
-                  </div>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-            <Button
-              type="submit"
-              className="w-full cursor-pointer bg-indigo-600 transition-colors duration-200 hover:bg-indigo-700 focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
-              disabled={isSubmitDisabled}
-            >
-              {(isLoading || isCsrfLoading) && <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" />}
-              {isLoading ? 'Creating account...' : isCsrfLoading ? 'Loading...' : 'Create account'}
-            </Button>
-          </form>
-        </Form>
-      </CardContent>
-      <CardFooter>
-        <div className="text-sm text-slate-500">
-          Already have an account?{' '}
-          <Link
-            href="/login"
-            className="text-indigo-600 transition-colors duration-200 hover:text-indigo-700 hover:underline"
+      </div>
+
+      <div className="space-y-2">
+        <Label htmlFor="password">Password</Label>
+        <div className="relative">
+          <Input
+            id="password"
+            type={showPassword ? 'text' : 'password'}
+            placeholder="Create a password"
+            autoComplete="new-password"
+            {...register('password')}
+            disabled={isLoading}
+          />
+          <button
+            type="button"
+            onClick={() => setShowPassword(!showPassword)}
+            className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700"
           >
-            Sign in
-          </Link>
+            {showPassword ? (
+              <EyeOff className="h-4 w-4" />
+            ) : (
+              <Eye className="h-4 w-4" />
+            )}
+          </button>
         </div>
-      </CardFooter>
-    </Card>
+        {errors.password && (
+          <p className="text-sm text-red-600">{errors.password.message}</p>
+        )}
+        {password && <PasswordStrengthIndicator password={password} />}
+      </div>
+
+      <div className="space-y-2">
+        <Label htmlFor="confirmPassword">Confirm Password</Label>
+        <div className="relative">
+          <Input
+            id="confirmPassword"
+            type={showConfirmPassword ? 'text' : 'password'}
+            placeholder="Confirm your password"
+            autoComplete="new-password"
+            {...register('confirmPassword')}
+            disabled={isLoading}
+          />
+          <button
+            type="button"
+            onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+            className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700"
+          >
+            {showConfirmPassword ? (
+              <EyeOff className="h-4 w-4" />
+            ) : (
+              <Eye className="h-4 w-4" />
+            )}
+          </button>
+        </div>
+        {errors.confirmPassword && (
+          <p className="text-sm text-red-600">
+            {errors.confirmPassword.message}
+          </p>
+        )}
+      </div>
+
+      <Button type="submit" className="w-full" disabled={isLoading}>
+        {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+        {isLoading ? 'Creating account...' : 'Create account'}
+      </Button>
+
+      <div className="text-center text-sm">
+        Already have an account?{' '}
+        <Link href="/login" className="text-primary hover:underline">
+          Log in
+        </Link>
+      </div>
+    </form>
   )
 }

@@ -1,135 +1,109 @@
 import { z } from 'zod'
 
 /**
- * Server-side environment variables schema
- * These are validated at runtime (lazy initialization)
+ * Environment variables validation
  */
-const serverEnvSchema = z.object({
-  // Supabase (public - available client-side)
-  NEXT_PUBLIC_SUPABASE_URL: z.string().url(),
-  NEXT_PUBLIC_SUPABASE_ANON_KEY: z.string().min(1),
 
-  // Supabase (server-only)
-  SUPABASE_SERVICE_ROLE_KEY: z.string().min(1).optional(),
-  SUPABASE_STORAGE_BUCKET: z.string().min(1).default('luma-files'),
+const envSchema = z.object({
+  // Node environment
+  NODE_ENV: z.enum(['development', 'production', 'test']),
 
-  // AI
-  OPENROUTER_API_KEY: z.string().min(1).optional(),
+  // Application
+  NEXT_PUBLIC_APP_URL: z.string().url(),
 
-  // App
-  NEXT_PUBLIC_APP_URL: z.string().url().optional(),
+  // Database
+  DATABASE_URL: z.string().min(1, 'DATABASE_URL is required'),
+  DIRECT_URL: z.string().min(1, 'DIRECT_URL is required'),
 
-  // CRON
-  CRON_SECRET: z.string().min(1).optional(),
+  // Supabase
+  NEXT_PUBLIC_SUPABASE_URL: z.string().url('Invalid Supabase URL'),
+  NEXT_PUBLIC_SUPABASE_ANON_KEY: z
+    .string()
+    .min(1, 'Supabase anon key is required'),
+  SUPABASE_SERVICE_ROLE_KEY: z
+    .string()
+    .min(1, 'Supabase service role key is required'),
+
+  // AI Services (optional for Phase 0)
+  OPENROUTER_API_KEY: z.string().optional(),
+  MATHPIX_APP_ID: z.string().optional(),
+  MATHPIX_APP_KEY: z.string().optional(),
+
+  // Cloudflare R2 (optional for Phase 0)
+  R2_ACCOUNT_ID: z.string().optional(),
+  R2_ACCESS_KEY_ID: z.string().optional(),
+  R2_SECRET_ACCESS_KEY: z.string().optional(),
+  R2_BUCKET_NAME: z.string().optional(),
+  R2_PUBLIC_URL: z.string().url().optional(),
+
+  // Trigger.dev (optional for Phase 0)
+  TRIGGER_API_KEY: z.string().optional(),
+  TRIGGER_API_URL: z.string().url().optional(),
+  TRIGGER_SECRET_KEY: z.string().optional(),
+
+  // Admin
+  SUPER_ADMIN_EMAIL: z.string().email().optional(),
+  SUPER_ADMIN_PASSWORD: z.string().optional(),
+
+  // Security
+  CSRF_SECRET: z.string().optional(),
+  SESSION_SECRET: z.string().optional(),
+
+  // Monitoring (Sentry)
+  NEXT_PUBLIC_SENTRY_DSN: z.string().url().optional(),
+  SENTRY_AUTH_TOKEN: z.string().optional(),
+  SENTRY_ORG: z.string().optional(),
+  SENTRY_PROJECT: z.string().optional(),
 })
 
-/**
- * Client-side environment variables schema
- * Only NEXT_PUBLIC_ prefixed variables are available in browser
- */
-const clientEnvSchema = z.object({
-  NEXT_PUBLIC_SUPABASE_URL: z.string().url(),
-  NEXT_PUBLIC_SUPABASE_ANON_KEY: z.string().min(1),
-  NEXT_PUBLIC_APP_URL: z.string().url().optional(),
-})
-
-export type ServerEnv = z.infer<typeof serverEnvSchema>
-export type ClientEnv = z.infer<typeof clientEnvSchema>
-
-// Cache for validated environment
-let _serverEnv: ServerEnv | null = null
-let _clientEnv: ClientEnv | null = null
+export type Env = z.infer<typeof envSchema>
 
 /**
- * Get validated server environment variables
- * Throws if validation fails (at runtime, not build time)
+ * Validate environment variables
+ * Required fields will cause process to exit, optional fields will only warn
  */
-function getServerEnv(): ServerEnv {
-  if (_serverEnv) return _serverEnv
-
-  const parsed = serverEnvSchema.safeParse(process.env)
-
-  if (!parsed.success) {
-    // During build, Next.js may not have all env vars
-    // Only throw at runtime
-    if (process.env.NODE_ENV === 'production' || typeof window === 'undefined') {
-      console.error(
-        '[ENV] Invalid server environment variables:',
-        Object.keys(parsed.error.flatten().fieldErrors)
-      )
+function validateEnv(): Env {
+  try {
+    return envSchema.parse(process.env)
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      console.error('❌ Invalid environment variables:')
+      error.errors.forEach((err) => {
+        console.error(`  - ${err.path.join('.')}: ${err.message}`)
+      })
+      process.exit(1)
     }
-    throw new Error('Invalid server environment variables')
+    throw error
   }
-
-  _serverEnv = parsed.data
-  return _serverEnv
 }
+
+export const env = validateEnv()
 
 /**
- * Get validated client environment variables
- * Throws if validation fails
+ * Check if required services are configured
  */
-function getClientEnv(): ClientEnv {
-  if (_clientEnv) return _clientEnv
+export function checkRequiredServices() {
+  const missing: string[] = []
 
-  const parsed = clientEnvSchema.safeParse({
-    NEXT_PUBLIC_SUPABASE_URL: process.env.NEXT_PUBLIC_SUPABASE_URL,
-    NEXT_PUBLIC_SUPABASE_ANON_KEY: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
-    NEXT_PUBLIC_APP_URL: process.env.NEXT_PUBLIC_APP_URL,
-  })
-
-  if (!parsed.success) {
-    console.error(
-      '[ENV] Invalid client environment variables:',
-      Object.keys(parsed.error.flatten().fieldErrors)
-    )
-    throw new Error('Invalid client environment variables')
+  // Check database
+  if (!env.DATABASE_URL || !env.DIRECT_URL) {
+    missing.push('Database (DATABASE_URL, DIRECT_URL)')
   }
 
-  _clientEnv = parsed.data
-  return _clientEnv
+  // Check Supabase
+  if (!env.NEXT_PUBLIC_SUPABASE_URL || !env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
+    missing.push(
+      'Supabase (NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY)'
+    )
+  }
+
+  if (missing.length > 0) {
+    console.warn('⚠️  Missing configuration for:', missing.join(', '))
+    console.warn('⚠️  Some features may not work correctly.')
+  }
 }
 
-// Lazy getters to avoid validation at import time
-export const serverEnv = new Proxy({} as ServerEnv, {
-  get(_, prop: keyof ServerEnv) {
-    return getServerEnv()[prop]
-  },
-})
-
-export const clientEnv = new Proxy({} as ClientEnv, {
-  get(_, prop: keyof ClientEnv) {
-    return getClientEnv()[prop]
-  },
-})
-
-// Convenience accessors for common use cases (also lazy)
-export const supabaseConfig = {
-  get url() {
-    return getServerEnv().NEXT_PUBLIC_SUPABASE_URL
-  },
-  get anonKey() {
-    return getServerEnv().NEXT_PUBLIC_SUPABASE_ANON_KEY
-  },
-  get serviceRoleKey() {
-    return getServerEnv().SUPABASE_SERVICE_ROLE_KEY
-  },
-}
-
-export const openRouterConfig = {
-  get apiKey() {
-    return getServerEnv().OPENROUTER_API_KEY
-  },
-}
-
-export const cronConfig = {
-  get secret() {
-    return getServerEnv().CRON_SECRET
-  },
-}
-
-export const storageConfig = {
-  get bucket() {
-    return getServerEnv().SUPABASE_STORAGE_BUCKET
-  },
+// Run check on import (only in development)
+if (env.NODE_ENV === 'development') {
+  checkRequiredServices()
 }

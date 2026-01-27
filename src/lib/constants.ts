@@ -1,119 +1,180 @@
-// ============================================
-// Authentication Constants
-// ============================================
+/**
+ * Application-wide constants
+ */
 
-export const AUTH = {
-  PASSWORD_MIN_LENGTH: 8,
-  SESSION_DURATION_DEFAULT: 7 * 24 * 60 * 60, // 7 days in seconds
-  SESSION_DURATION_REMEMBER: 30 * 24 * 60 * 60, // 30 days in seconds
-  VERIFICATION_LINK_EXPIRY: 24 * 60 * 60, // 24 hours in seconds
-  RESET_LINK_EXPIRY: 24 * 60 * 60, // 24 hours in seconds
-  EMAIL_RATE_LIMIT: 5, // emails per 15 minutes
-  EMAIL_RATE_WINDOW: 15 * 60, // 15 minutes in seconds
-  LOGIN_LOCKOUT_ATTEMPTS: 5,
-  LOGIN_LOCKOUT_DURATION: 30 * 60, // 30 minutes in seconds
+// Error Codes
+export const ERROR_CODES = {
+  // Authentication
+  AUTH_INVALID_CREDENTIALS: 'AUTH_INVALID_CREDENTIALS',
+  AUTH_EMAIL_NOT_VERIFIED: 'AUTH_EMAIL_NOT_VERIFIED',
+  AUTH_ACCOUNT_LOCKED: 'AUTH_ACCOUNT_LOCKED',
+  AUTH_UNAUTHORIZED: 'AUTH_UNAUTHORIZED',
+  AUTH_TOKEN_EXPIRED: 'AUTH_TOKEN_EXPIRED',
+  AUTH_TOKEN_INVALID: 'AUTH_TOKEN_INVALID',
+
+  // Course Management
+  COURSE_LIMIT_REACHED: 'COURSE_LIMIT_REACHED',
+  COURSE_NOT_FOUND: 'COURSE_NOT_FOUND',
+  COURSE_FORBIDDEN: 'COURSE_FORBIDDEN',
+
+  // File Management
+  FILE_TOO_LARGE: 'FILE_TOO_LARGE',
+  FILE_TOO_MANY_PAGES: 'FILE_TOO_MANY_PAGES',
+  FILE_DUPLICATE_NAME: 'FILE_DUPLICATE_NAME',
+  FILE_COUNT_LIMIT_REACHED: 'FILE_COUNT_LIMIT_REACHED',
+  FILE_NOT_FOUND: 'FILE_NOT_FOUND',
+  FILE_FORBIDDEN: 'FILE_FORBIDDEN',
+  FILE_INVALID_TYPE: 'FILE_INVALID_TYPE',
+  STORAGE_LIMIT_REACHED: 'STORAGE_LIMIT_REACHED',
+
+  // AI Tutor
+  TUTOR_STRUCTURE_NOT_READY: 'TUTOR_STRUCTURE_NOT_READY',
+  TUTOR_STRUCTURE_FAILED: 'TUTOR_STRUCTURE_FAILED',
+  TUTOR_SESSION_NOT_FOUND: 'TUTOR_SESSION_NOT_FOUND',
+  TUTOR_SESSION_FORBIDDEN: 'TUTOR_SESSION_FORBIDDEN',
+  TUTOR_QUOTA_EXCEEDED: 'TUTOR_QUOTA_EXCEEDED',
+
+  // Learning Sessions
+  SESSION_NOT_FOUND: 'SESSION_NOT_FOUND',
+  SESSION_FORBIDDEN: 'SESSION_FORBIDDEN',
+  SESSION_INVALID_STATE: 'SESSION_INVALID_STATE',
+  SESSION_INVALID_PHASE: 'SESSION_INVALID_PHASE',
+  TOPIC_NOT_FOUND: 'TOPIC_NOT_FOUND',
+  QUESTION_NOT_FOUND: 'QUESTION_NOT_FOUND',
+  QUESTION_ALREADY_CORRECT: 'QUESTION_ALREADY_CORRECT',
+  SKIP_NOT_ALLOWED: 'SKIP_NOT_ALLOWED',
+  PROGRESS_NOT_FOUND: 'PROGRESS_NOT_FOUND',
+  AI_GENERATION_FAILED: 'AI_GENERATION_FAILED',
+  QUOTA_EXCEEDED: 'QUOTA_EXCEEDED',
+
+  // General
+  VALIDATION_ERROR: 'VALIDATION_ERROR',
+  INTERNAL_SERVER_ERROR: 'INTERNAL_SERVER_ERROR',
+  NOT_FOUND: 'NOT_FOUND',
+  RATE_LIMIT_EXCEEDED: 'RATE_LIMIT_EXCEEDED',
+  CSRF_TOKEN_INVALID: 'CSRF_TOKEN_INVALID',
 } as const
 
-// ============================================
-// Quota Constants
-// ============================================
-
-export const QUOTA = {
-  LEARNING_INTERACTIONS_LIMIT: 150,
-  AUTO_EXPLAIN_LIMIT: 300,
-} as const
-
-// ============================================
-// Storage Constants
-// ============================================
-
-export const STORAGE = {
+// File Limits
+export const FILE_LIMITS = {
   MAX_FILE_SIZE: 200 * 1024 * 1024, // 200MB
   MAX_PAGE_COUNT: 500,
   MAX_FILES_PER_COURSE: 30,
-  MAX_USER_STORAGE: 5 * 1024 * 1024 * 1024, // 5GB
+  MAX_STORAGE_PER_USER: 5 * 1024 * 1024 * 1024, // 5GB
+  ALLOWED_TYPES: ['application/pdf'],
+  UPLOAD_URL_EXPIRY: 3600, // 1 hour in seconds
+  DOWNLOAD_URL_EXPIRY: 3600, // 1 hour in seconds
+  MAX_CONCURRENT_UPLOADS: 3,
+} as const
+
+// File Status
+export const FILE_STATUS = {
+  UPLOADING: 'UPLOADING',
+  PROCESSING: 'PROCESSING',
+  READY: 'READY',
+  FAILED: 'FAILED',
+} as const
+
+// Structure Status
+export const STRUCTURE_STATUS = {
+  PENDING: 'PENDING',
+  PROCESSING: 'PROCESSING',
+  READY: 'READY',
+  FAILED: 'FAILED',
+} as const
+
+// PDF Processing
+export const PDF_CONFIG = {
+  SCANNED_PDF_TEXT_THRESHOLD: 0.7,
+  MIN_TEXT_PER_PAGE: 100,
+} as const
+
+// Course Limits
+export const COURSE_LIMITS = {
   MAX_COURSES_PER_USER: 6,
+  MAX_NAME_LENGTH: 50,
+  MAX_SCHOOL_LENGTH: 100,
+  MAX_TERM_LENGTH: 50,
 } as const
 
-// ============================================
-// PDF Processing Constants
-// ============================================
-
-export const PDF = {
-  /** Number of pages to sample when detecting scanned PDFs */
-  SCANNED_DETECTION_SAMPLE_SIZE: 5,
-  /** Minimum text items on a page to consider it as having text */
-  MIN_TEXT_ITEMS_THRESHOLD: 50,
-  /** Ratio threshold below which a PDF is considered scanned (text pages / sample pages < 0.2) */
-  SCANNED_THRESHOLD_RATIO: 0.2,
+// Quota Limits
+export const QUOTA_LIMITS = {
+  LEARNING_INTERACTIONS: 150, // per month
+  AUTO_EXPLAIN: 300, // per month
 } as const
 
-// ============================================
-// URL Validation Constants
-// ============================================
+// Rate Limits (requests per window)
+export const RATE_LIMITS = {
+  AUTH: {
+    windowMs: 15 * 60 * 1000, // 15 minutes
+    maxRequests: 10,
+  },
+  API: {
+    windowMs: 60 * 1000, // 1 minute
+    maxRequests: 100,
+  },
+  AI: {
+    windowMs: 60 * 1000, // 1 minute
+    maxRequests: 20,
+  },
+  EMAIL: {
+    windowMs: 15 * 60 * 1000, // 15 minutes
+    maxRequests: 5,
+  },
+} as const
 
-/**
- * Allowed redirect origins for email links and authentication flows
- * In production, only include your actual domains
- */
-export const ALLOWED_REDIRECT_ORIGINS =
-  process.env.NODE_ENV === 'production'
-    ? ['https://luma.app', 'https://www.luma.app']
-    : ['http://localhost:3000', 'http://localhost:4000']
+// Account Security
+export const SECURITY = {
+  MAX_LOGIN_ATTEMPTS: 5,
+  LOCKOUT_DURATION_MS: 30 * 60 * 1000, // 30 minutes
+  PASSWORD_MIN_LENGTH: 8,
+  TOKEN_EXPIRY_HOURS: 24,
+  SESSION_COOKIE_NAME: 'luma-session',
+  SESSION_MAX_AGE_DAYS: 7,
+  SESSION_MAX_AGE_REMEMBER_DAYS: 30,
+} as const
 
-// ============================================
-// Route Constants
-// ============================================
+// AI Configuration
+export const AI_CONFIG = {
+  OPENROUTER_MODEL: 'anthropic/claude-3.5-sonnet',
+  MAX_TOKENS: 4096,
+  TEMPERATURE: 0.7,
+  STRUCTURE_EXTRACTION_TIMEOUT: 5 * 60 * 1000, // 5 minutes
+  BATCH_SIZE: 120, // pages per batch
+} as const
 
-/**
- * Route patterns for authentication middleware
- */
-export const ROUTES = {
-  /**
-   * Auth-only routes - authenticated users should be redirected to /courses
-   * These are pages for unauthenticated users only (login, register, etc.)
-   */
-  AUTH_ONLY: ['/login', '/register', '/forgot-password', '/reset-password'] as const,
+// Pagination
+export const PAGINATION = {
+  DEFAULT_PAGE_SIZE: 20,
+  MAX_PAGE_SIZE: 100,
+} as const
 
-  /**
-   * Protected routes - require authentication
-   * Unauthenticated users should be redirected to /login
-   */
-  PROTECTED: ['/courses', '/files', '/reader', '/settings'] as const,
+// Admin Security
+export const ADMIN_SECURITY = {
+  SESSION_COOKIE_NAME: 'luma-admin-session',
+  SESSION_MAX_AGE_DAYS: 1, // 24 hours for admin sessions
+} as const
 
-  /**
-   * Admin routes - require authentication (role check at route handler level)
-   */
-  ADMIN: ['/admin'] as const,
+// Admin Error Codes
+export const ADMIN_ERROR_CODES = {
+  ADMIN_UNAUTHORIZED: 'ADMIN_UNAUTHORIZED',
+  ADMIN_FORBIDDEN: 'ADMIN_FORBIDDEN',
+  ADMIN_DISABLED: 'ADMIN_DISABLED',
+  ADMIN_INVALID_CREDENTIALS: 'ADMIN_INVALID_CREDENTIALS',
+} as const
 
-  /**
-   * Admin login route - accessible without authentication
-   */
-  ADMIN_LOGIN: '/admin/login' as const,
-
-  /**
-   * Public API routes - no authentication required
-   */
-  PUBLIC_API: [
-    '/api/auth/login',
-    '/api/auth/register',
-    '/api/auth/reset-password',
-    '/api/auth/resend-verification',
-    '/api/auth/verify-email',
-  ] as const,
-
-  /**
-   * CRON API routes - require CRON_SECRET validation
-   */
-  CRON: '/api/cron' as const,
-
-  /**
-   * Default redirect destinations
-   */
-  REDIRECTS: {
-    AFTER_LOGIN: '/courses',
-    AFTER_LOGOUT: '/login',
-    UNAUTHENTICATED: '/login',
-    ADMIN_UNAUTHENTICATED: '/admin/login',
-  } as const,
+// API Response Messages
+export const MESSAGES = {
+  SUCCESS: {
+    CREATED: 'Resource created successfully',
+    UPDATED: 'Resource updated successfully',
+    DELETED: 'Resource deleted successfully',
+  },
+  ERROR: {
+    VALIDATION: 'Validation failed',
+    UNAUTHORIZED: 'Unauthorized access',
+    FORBIDDEN: 'Access forbidden',
+    NOT_FOUND: 'Resource not found',
+    INTERNAL: 'Internal server error',
+  },
 } as const

@@ -14,7 +14,14 @@
       "Bash(npm install:*)",
       "Bash(pnpm tsc:*)",
       "Bash(pnpm typecheck:*)",
-      "Bash(git rev-parse:*)"
+      "Bash(git rev-parse:*)",
+      "Bash(npx prisma format:*)",
+      "Bash(wc:*)",
+      "Bash(tree:*)",
+      "Bash(find:*)",
+      "Bash(ls:*)",
+      "Bash(git ls-tree:*)",
+      "Bash(git add:*)"
     ],
     "additionalDirectories": [
       "C:\\Users\\29910\\.claude\\skills\\learned",

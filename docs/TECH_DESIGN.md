@@ -1,935 +1,980 @@
-# Luma Web - 技术设计文档
+# Luma Web - Technical Design Document
 
-> **版本**: v1.0
-> **最后更新**: 2026-01-24
-> **对应 PRD 版本**: v1.1 MVP
-
----
-
-## 目录
-
-1. [技术栈总览](#1-技术栈总览)
-2. [系统架构](#2-系统架构)
-3. [数据库设计](#3-数据库设计)
-4. [认证方案](#4-认证方案)
-5. [文件存储方案](#5-文件存储方案)
-6. [PDF 处理流程](#6-pdf-处理流程)
-7. [AI 集成方案](#7-ai-集成方案)
-8. [API 设计](#8-api-设计)
-9. [后台任务](#9-后台任务)
-10. [部署方案](#10-部署方案)
-11. [开发规范](#11-开发规范)
+> **Version**: 1.0 MVP
+> **Last Updated**: 2026-01-26
+> **Status**: Draft
 
 ---
 
-## 1. 技术栈总览
+## Table of Contents
 
-| 层级 | 技术选型 | 说明 |
-|------|----------|------|
-| 前端框架 | Next.js 14 (App Router) | React 全栈框架 |
-| 样式 | Tailwind CSS + shadcn/ui | 组件库 |
-| 状态管理 | Zustand / React Query | 客户端状态 + 服务端缓存 |
-| 后端 | Next.js API Routes + Server Actions | Serverless |
-| 数据库 | Supabase PostgreSQL | 托管 Postgres |
-| ORM | Prisma | 类型安全 |
-| 认证 | Supabase Auth | 邮箱验证开箱即用 |
-| 文件存储 | Supabase Storage | MVP 阶段，后期可迁移 R2 |
-| PDF 渲染 | react-pdf (pdf.js) | 前端阅读器 |
-| AI 服务 | Gemini 2.5 Pro (主) + OpenAI/Claude (备) | 多平台支持 |
-| 部署 | Vercel | Serverless |
-| 定时任务 | cron-job.org | 外部 Cron 服务 |
+1. [Executive Summary](#1-executive-summary)
+2. [System Architecture](#2-system-architecture)
+3. [Technology Stack](#3-technology-stack)
+4. [Project Structure](#4-project-structure)
+5. [Database Design](#5-database-design)
+6. [API Design](#6-api-design)
+7. [Core Feature: AI Interactive Tutor](#7-core-feature-ai-interactive-tutor)
+8. [Authentication & Security](#8-authentication--security)
+9. [State Management](#9-state-management)
+10. [Background Jobs](#10-background-jobs)
+11. [Integration Points](#11-integration-points)
+12. [Performance Considerations](#12-performance-considerations)
+13. [Deployment Strategy](#13-deployment-strategy)
+14. [Implementation Phases](#14-implementation-phases)
 
 ---
 
-## 2. 系统架构
+## 1. Executive Summary
 
-### 2.1 架构图
+### 1.1 Product Overview
+
+Luma Web is an AI-powered learning management system designed for university students. The platform enables students to:
+
+- Organize courses and upload PDF learning materials
+- Receive AI-guided interactive tutoring on PDF content
+- Track learning progress with knowledge structure visualization
+- Test understanding through AI-generated assessments
+
+### 1.2 Key Features
+
+| Module               | Description                                            | Priority   |
+| -------------------- | ------------------------------------------------------ | ---------- |
+| User Authentication  | Email/password auth with verification                  | MVP        |
+| Course Management    | CRUD operations for courses (max 6/user)               | MVP        |
+| File Management      | PDF upload with validation (max 200MB, 500 pages)      | MVP        |
+| AI Interactive Tutor | Two-layer knowledge structure, five-layer explanations | MVP (Core) |
+| Quota Management     | Usage limits (150 interactions/month)                  | MVP        |
+| User Settings        | Language preferences (en/zh)                           | MVP        |
+| Admin Dashboard      | System stats, cost monitoring                          | MVP        |
+
+### 1.3 Technical Goals
+
+- **Performance**: First byte < 2s for AI explanations (SSE)
+- **Scalability**: Support 10,000+ concurrent users
+- **Reliability**: 99.9% uptime target
+- **Security**: OWASP Top 10 compliance
+- **Maintainability**: 80%+ test coverage for core modules
+
+---
+
+## 2. System Architecture
+
+### 2.1 High-Level Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                          客户端 (Browser)                        │
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────────┐  │
-│  │   课程管理   │  │   文件管理   │  │    PDF 阅读器 (pdf.js)   │  │
-│  └─────────────┘  └─────────────┘  └─────────────────────────┘  │
-└───────────────────────────┬─────────────────────────────────────┘
-                            │ HTTPS
-                            ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                        Vercel (Next.js)                          │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────────────┐   │
-│  │  API Routes  │  │Server Actions│  │     Middleware       │   │
-│  └──────┬───────┘  └──────┬───────┘  │   (Auth 检查)        │   │
-│         └────────┬────────┘          └──────────────────────┘   │
-│                  ▼                                               │
-│         ┌─────────────────┐                                      │
-│         │   Prisma ORM    │                                      │
-│         └────────┬────────┘                                      │
-└──────────────────┼──────────────────────────────────────────────┘
-                   │
-     ┌─────────────┼─────────────┬─────────────────┐
-     ▼             ▼             ▼                 ▼
-┌─────────┐  ┌──────────┐  ┌──────────┐    ┌─────────────┐
-│Supabase │  │ Supabase │  │ Supabase │    │   AI APIs   │
-│  Auth   │  │ Postgres │  │ Storage  │    │ Gemini/GPT  │
-└─────────┘  └──────────┘  └──────────┘    └─────────────┘
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                              Client Layer                                    │
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐        │
+│  │   Browser   │  │   Mobile    │  │   PWA       │  │   Desktop   │        │
+│  │   (React)   │  │   (Future)  │  │   (Future)  │  │   (Future)  │        │
+│  └──────┬──────┘  └─────────────┘  └─────────────┘  └─────────────┘        │
+└─────────┼───────────────────────────────────────────────────────────────────┘
+          │
+          ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                            Application Layer                                 │
+│  ┌──────────────────────────────────────────────────────────────────────┐  │
+│  │                    Next.js 14+ (App Router)                          │  │
+│  │  ┌───────────────┐  ┌───────────────┐  ┌───────────────┐            │  │
+│  │  │  Server       │  │   API         │  │   Middleware  │            │  │
+│  │  │  Components   │  │   Routes      │  │   (Auth/CSRF) │            │  │
+│  │  └───────────────┘  └───────────────┘  └───────────────┘            │  │
+│  └──────────────────────────────────────────────────────────────────────┘  │
+└─────────┬─────────────────────────────┬─────────────────────────────────────┘
+          │                             │
+          ▼                             ▼
+┌─────────────────────────┐  ┌─────────────────────────────────────────────────┐
+│     Data Layer          │  │              External Services                   │
+│  ┌──────────────────┐   │  │  ┌─────────────┐  ┌─────────────┐              │
+│  │   PostgreSQL     │   │  │  │  OpenRouter │  │   Mathpix   │              │
+│  │   (Supabase)     │   │  │  │  (AI)       │  │  (Formula)  │              │
+│  │   + Prisma ORM   │   │  │  └─────────────┘  └─────────────┘              │
+│  └──────────────────┘   │  │  ┌─────────────┐  ┌─────────────┐              │
+│  ┌──────────────────┐   │  │  │  Supabase   │  │ Cloudflare  │              │
+│  │   Supabase       │   │  │  │  Auth       │  │    R2       │              │
+│  │   Storage        │   │  │  └─────────────┘  └─────────────┘              │
+│  └──────────────────┘   │  │  ┌─────────────┐                               │
+└─────────────────────────┘  │  │ Trigger.dev │                               │
+                             │  │  (Jobs)     │                               │
+                             │  └─────────────┘                               │
+                             └─────────────────────────────────────────────────┘
 ```
 
-### 2.2 目录结构
+### 2.2 Data Flow
 
 ```
-luma-web/
+User Action → Next.js API Route → Auth Middleware → Business Logic → Database
+                                                          │
+                                                          ├── AI Service (async)
+                                                          │
+                                                          └── Background Job (async)
+```
+
+---
+
+## 3. Technology Stack
+
+### 3.1 Core Technologies
+
+| Layer           | Technology       | Version | Purpose                    |
+| --------------- | ---------------- | ------- | -------------------------- |
+| Framework       | Next.js          | 14.2+   | Full-stack React framework |
+| Language        | TypeScript       | 5.7+    | Type safety                |
+| Database        | PostgreSQL       | 15+     | Primary data store         |
+| ORM             | Prisma           | 5.22+   | Database access            |
+| Auth            | Supabase Auth    | Latest  | Authentication             |
+| Storage         | Supabase Storage | Latest  | PDF file storage           |
+| Image Storage   | Cloudflare R2    | Latest  | Extracted images           |
+| Background Jobs | Trigger.dev      | v3      | Async processing           |
+| AI              | OpenRouter       | Latest  | LLM API gateway            |
+| Formula OCR     | Mathpix          | Latest  | LaTeX recognition          |
+
+### 3.2 Frontend Technologies
+
+| Category       | Technology            | Purpose                 |
+| -------------- | --------------------- | ----------------------- |
+| UI Framework   | React 18              | Component library       |
+| Styling        | Tailwind CSS          | Utility-first CSS       |
+| Components     | shadcn/ui + Radix     | Accessible components   |
+| Icons          | Lucide React          | Icon library            |
+| State (Server) | TanStack Query        | Server state caching    |
+| State (Client) | Zustand               | Client state management |
+| Forms          | React Hook Form + Zod | Form validation         |
+| PDF Viewer     | react-pdf             | PDF rendering           |
+| LaTeX          | KaTeX                 | Formula rendering       |
+| Charts         | Recharts              | Data visualization      |
+
+### 3.3 Development Tools
+
+| Tool       | Purpose         |
+| ---------- | --------------- |
+| ESLint     | Code linting    |
+| Prettier   | Code formatting |
+| Vitest     | Unit testing    |
+| Playwright | E2E testing     |
+| Husky      | Git hooks       |
+
+---
+
+## 4. Project Structure
+
+```
+/luma-web
+├── .claude/                    # Claude AI configuration
 ├── prisma/
-│   └── schema.prisma
+│   ├── schema.prisma           # Database schema
+│   ├── migrations/             # Database migrations
+│   └── seed.ts                 # Database seeding
+│
 ├── src/
-│   ├── app/
-│   │   ├── (auth)/                # 登录/注册
-│   │   │   ├── login/
-│   │   │   └── register/
-│   │   ├── (main)/                # 主应用（需登录）
-│   │   │   ├── courses/
-│   │   │   ├── files/
-│   │   │   ├── reader/[fileId]/
-│   │   │   └── settings/
-│   │   ├── (admin)/               # 管理后台
+│   ├── app/                    # Next.js App Router
+│   │   ├── (admin)/            # Admin route group
 │   │   │   └── admin/
-│   │   └── api/
-│   │       ├── auth/
-│   │       ├── courses/
-│   │       ├── files/
-│   │       ├── ai/
-│   │       ├── cron/
-│   │       └── admin/
+│   │   │       ├── page.tsx
+│   │   │       ├── login/page.tsx
+│   │   │       ├── users/page.tsx
+│   │   │       └── cost/page.tsx
+│   │   │
+│   │   ├── (auth)/             # Auth route group
+│   │   │   ├── login/page.tsx
+│   │   │   ├── register/page.tsx
+│   │   │   ├── forgot-password/page.tsx
+│   │   │   └── reset-password/page.tsx
+│   │   │
+│   │   ├── (main)/             # Main app route group
+│   │   │   ├── courses/page.tsx
+│   │   │   ├── files/[courseId]/page.tsx
+│   │   │   ├── reader/[fileId]/page.tsx
+│   │   │   ├── learn/[sessionId]/page.tsx
+│   │   │   └── settings/page.tsx
+│   │   │
+│   │   ├── api/
+│   │   │   ├── auth/           # Auth endpoints
+│   │   │   ├── courses/        # Course CRUD
+│   │   │   ├── files/          # File management
+│   │   │   ├── learn/          # AI tutor endpoints
+│   │   │   ├── quota/          # Quota endpoints
+│   │   │   ├── preferences/    # User preferences
+│   │   │   ├── admin/          # Admin endpoints
+│   │   │   └── webhooks/       # External webhooks
+│   │   │
+│   │   ├── globals.css
+│   │   ├── layout.tsx
+│   │   ├── page.tsx
+│   │   └── providers.tsx
+│   │
 │   ├── components/
-│   │   ├── ui/                    # shadcn/ui
-│   │   ├── course/
-│   │   ├── file/
-│   │   ├── reader/
-│   │   └── admin/
-│   ├── lib/
-│   │   ├── prisma.ts
-│   │   ├── supabase.ts
-│   │   ├── ai/                    # 多 LLM 封装
-│   │   │   ├── index.ts
-│   │   │   ├── gemini.ts
-│   │   │   ├── openai.ts
-│   │   │   └── anthropic.ts
-│   │   ├── pdf.ts
-│   │   └── quota.ts
+│   │   ├── ui/                 # Base UI components (shadcn/ui)
+│   │   ├── auth/               # Auth components
+│   │   ├── course/             # Course components
+│   │   ├── file/               # File components
+│   │   ├── reader/             # PDF reader components
+│   │   ├── learn/              # AI tutor components
+│   │   └── admin/              # Admin components
+│   │
 │   ├── hooks/
+│   │   ├── use-user.ts
+│   │   ├── use-courses.ts
+│   │   ├── use-files.ts
+│   │   ├── use-learning-session.ts
+│   │   ├── use-quota.ts
+│   │   ├── use-preferences.ts
+│   │   └── use-sse.ts
+│   │
 │   ├── stores/
+│   │   ├── reader-store.ts
+│   │   └── learning-store.ts
+│   │
+│   ├── lib/
+│   │   ├── ai/
+│   │   │   ├── index.ts        # AI client
+│   │   │   ├── mathpix.ts      # Mathpix integration
+│   │   │   └── prompts/        # Prompt templates
+│   │   ├── api/                # API client functions
+│   │   ├── supabase/           # Supabase clients
+│   │   ├── middleware/         # Route middleware helpers
+│   │   ├── auth.ts
+│   │   ├── constants.ts
+│   │   ├── csrf.ts
+│   │   ├── prisma.ts
+│   │   ├── rate-limit.ts
+│   │   ├── storage.ts
+│   │   └── utils.ts
+│   │
 │   └── types/
-├── public/
-├── .env.local
-├── CLAUDE.md
-├── PRD.md
-└── TECH_DESIGN.md
+│       ├── index.ts
+│       └── database.ts
+│
+├── trigger/                    # Trigger.dev jobs
+│   ├── jobs/
+│   │   ├── extract-structure.ts
+│   │   ├── extract-images.ts
+│   │   └── quota-reset.ts
+│   └── client.ts
+│
+├── scripts/
+│   └── extract_images.py       # PyMuPDF image extraction
+│
+├── tests/
+│   ├── unit/
+│   ├── integration/
+│   ├── e2e/
+│   └── setup.ts
+│
+├── docs/
+│   ├── PRD.md
+│   ├── tech_design.md
+│   └── task.md
+│
+└── config files...
 ```
 
 ---
 
-## 3. 数据库设计
+## 5. Database Design
 
-### 3.1 ER 图
-
-```
-┌──────────────────┐
-│   auth.users     │ (Supabase 管理)
-└────────┬─────────┘
-         │ 1:1
-         ▼
-┌──────────────────┐     ┌──────────────────┐
-│     Profile      │     │  UserPreference  │
-│ ──────────────── │     │ ──────────────── │
-│ user_id (PK,FK)  │     │ user_id (PK,FK)  │
-│ role             │     │ ui_locale        │
-└────────┬─────────┘     │ explain_locale   │
-         │               └──────────────────┘
-         │ 1:N
-    ┌────┴────┐
-    ▼         ▼
-┌────────┐  ┌────────┐
-│ Course │  │ Quota  │
-└───┬────┘  └────────┘
-    │ 1:N
-    ▼
-┌────────┐
-│  File  │
-└───┬────┘
-    │ 1:N
-    ├──────────┬──────────┬──────────┐
-    ▼          ▼          ▼          ▼
-┌────────┐ ┌────────┐ ┌────────┐ ┌─────────────┐
-│Explain │ │   QA   │ │ Image  │ │  Reading    │
-│        │ │        │ │ Region │ │  Progress   │
-└────────┘ └────────┘ └────────┘ └─────────────┘
-```
-
-### 3.2 表设计
-
-#### Profile
-
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| user_id | uuid | PK, FK → auth.users |
-| role | enum('student','admin') | 默认 student |
-| created_at | timestamp | |
-| updated_at | timestamp | |
-
-> MVP 不实现登录锁定，依赖 Supabase 默认行为
-
-#### Course
-
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| id | uuid | PK |
-| user_id | uuid | FK |
-| name | varchar(50) | NOT NULL |
-| school | varchar(100) | |
-| term | varchar(50) | |
-| created_at | timestamp | |
-| updated_at | timestamp | |
-
-索引: `UNIQUE(user_id, name)`
-
-#### File
-
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| id | uuid | PK |
-| course_id | uuid | FK, ON DELETE CASCADE |
-| user_id | uuid | FK, 冗余字段便于查询 |
-| name | varchar(255) | |
-| type | enum('lecture') | MVP 固定值 |
-| page_count | int | |
-| file_size | bigint | 字节 |
-| is_scanned | boolean | 默认 false |
-| status | enum | uploading/processing/ready/failed |
-| storage_path | varchar(500) | |
-| created_at | timestamp | |
-| updated_at | timestamp | 状态变更时更新 |
-
-索引: `UNIQUE(course_id, name)`, `(user_id)`
-
-#### Explanation
-
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| id | uuid | PK |
-| file_id | uuid | FK, ON DELETE CASCADE |
-| page_number | int | |
-| content | text | AI 生成的讲解 |
-| created_at | timestamp | |
-
-索引: `UNIQUE(file_id, page_number)`
-
-#### ImageRegion
-
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| id | uuid | PK |
-| file_id | uuid | FK, ON DELETE CASCADE |
-| page_number | int | |
-| bbox | jsonb | {x, y, width, height} |
-| explanation | text | AI 生成的图片解释 |
-| created_at | timestamp | |
-
-#### QA
-
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| id | uuid | PK |
-| file_id | uuid | FK, ON DELETE CASCADE |
-| question | text | |
-| answer | text | |
-| page_refs | jsonb | 引用页码 [1,3,5] |
-| created_at | timestamp | |
-
-> 问答只关联到提问时所在的文件，不支持跨文件
-
-#### ReadingProgress
-
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| id | uuid | PK |
-| user_id | uuid | FK |
-| file_id | uuid | FK, ON DELETE CASCADE |
-| page_number | int | |
-| updated_at | timestamp | |
-
-索引: `UNIQUE(user_id, file_id)`
-
-#### Quota
-
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| id | uuid | PK |
-| user_id | uuid | FK |
-| bucket | enum | learningInteractions / autoExplain |
-| used | int | 默认 0 |
-| limit | int | 150 / 300 |
-| reset_at | timestamp | 下次重置时间 |
-
-索引: `UNIQUE(user_id, bucket)`
-
-#### QuotaLog
-
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| id | uuid | PK |
-| user_id | uuid | FK |
-| bucket | enum | |
-| change | int | +1 消耗, -1 退还 |
-| reason | enum | consume/refund/system_reset/admin_adjust |
-| created_at | timestamp | |
-
-#### UserPreference
-
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| user_id | uuid | PK, FK |
-| ui_locale | enum('en','zh') | 默认 en |
-| explain_locale | enum('en','zh') | 默认 en |
-| updated_at | timestamp | |
-
-#### Admin（独立账户体系）
-
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| id | uuid | PK |
-| email | varchar(255) | UNIQUE |
-| password_hash | varchar(255) | bcrypt |
-| role | enum | super_admin / admin |
-| created_at | timestamp | |
-| disabled_at | timestamp | |
-
-#### AccessLog
-
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| id | uuid | PK |
-| user_id | uuid | |
-| action_type | enum | login/view_file/use_qa/use_explain |
-| metadata | jsonb | |
-| timestamp | timestamp | |
-
-#### AIUsageLog
-
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| id | uuid | PK |
-| user_id | uuid | FK |
-| action_type | enum | qa / explain |
-| input_tokens | int | |
-| output_tokens | int | |
-| model | varchar(50) | |
-| cost_cents | int | 成本（分） |
-| created_at | timestamp | |
-
-#### AuditLog（管理员操作审计）
-
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| id | uuid | PK |
-| admin_id | uuid | FK → Admin |
-| action | varchar(50) | adjust_quota / disable_user 等 |
-| target_user_id | uuid | 被操作的用户 |
-| details | jsonb | 操作详情 |
-| created_at | timestamp | |
-
----
-
-## 4. 认证方案
-
-### 4.1 Supabase Auth 提供
-
-- ✅ 邮箱密码注册/登录
-- ✅ 邮箱验证（自动发送）
-- ✅ 密码重置
-- ✅ Session 管理
-
-### 4.2 MVP 简化
-
-| PRD 需求 | MVP 实现 |
-|----------|----------|
-| 登录失败锁定 | 不做，依赖 Supabase |
-| 邮件限流 | 不做，依赖 Supabase |
-| 记住我 | Session 有效期配置 |
-| 管理员账户 | 独立表 + bcrypt + JWT |
-
-### 4.3 认证流程
+### 5.1 Entity Relationship Diagram
 
 ```
-注册:
-1. supabase.auth.signUp(email, password)
-2. Supabase 发送验证邮件
-3. 用户点击验证
-4. Webhook → 创建 Profile + Quota
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                           USER AUTHENTICATION                                │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│  ┌─────────────┐         ┌─────────────────────┐                           │
+│  │    User     │ 1 ─── N │ VerificationToken   │                           │
+│  │             │         │                     │                           │
+│  │  - id       │         │  - id               │                           │
+│  │  - email    │         │  - user_id          │                           │
+│  │  - password │         │  - token            │                           │
+│  │  - role     │         │  - type             │                           │
+│  └──────┬──────┘         │  - expires_at       │                           │
+│         │                └─────────────────────┘                           │
+└─────────┼───────────────────────────────────────────────────────────────────┘
+          │
+          │ 1:N
+          ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                           COURSE & FILE MANAGEMENT                           │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│  ┌─────────────┐         ┌─────────────────────┐                           │
+│  │   Course    │ 1 ─── N │       File          │                           │
+│  │             │         │                     │                           │
+│  │  - id       │         │  - id               │                           │
+│  │  - user_id  │         │  - course_id        │                           │
+│  │  - name     │         │  - name             │                           │
+│  │  - school   │         │  - status           │                           │
+│  │  - term     │         │  - structure_status │                           │
+│  └─────────────┘         └──────────┬──────────┘                           │
+│                                     │                                       │
+└─────────────────────────────────────┼───────────────────────────────────────┘
+                                      │ 1:N
+                                      ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                           AI INTERACTIVE TUTOR                               │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│  ┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐      │
+│  │   TopicGroup    │ 1:N │    SubTopic     │     │   TopicTest     │      │
+│  │                 ├────►│                 │     │                 │      │
+│  │  - id           │     │  - id           │     │  - id           │      │
+│  │  - file_id      │     │  - topic_id     │     │  - topic_id     │      │
+│  │  - index        │     │  - index        │     │  - question     │      │
+│  │  - title        │     │  - title        │     │  - options      │      │
+│  │  - type (CORE/  │     │  - metadata     │     │  - answer       │      │
+│  │    SUPPORTING)  │     └─────────────────┘     └─────────────────┘      │
+│  └────────┬────────┘                                                       │
+│           │ 1:N                                                             │
+│           ▼                                                                 │
+│  ┌─────────────────┐     ┌─────────────────┐                               │
+│  │ LearningSession │ 1:N │  TopicProgress  │                               │
+│  │                 ├────►│                 │                               │
+│  │  - id           │     │  - id           │                               │
+│  │  - user_id      │     │  - session_id   │                               │
+│  │  - file_id      │     │  - topic_id     │                               │
+│  │  - status       │     │  - status       │                               │
+│  │  - current_pos  │     │  - is_weak_point│                               │
+│  └─────────────────┘     │  - wrong_count  │                               │
+│                          └─────────────────┘                               │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
 
-登录:
-1. supabase.auth.signInWithPassword()
-2. 成功 → 记录 AccessLog
+### 5.2 Key Database Tables
 
-管理员登录:
-1. POST /api/admin/login
-2. bcrypt 验证
-3. 签发独立 JWT
+| Table                | Purpose                       | Key Relationships                  |
+| -------------------- | ----------------------------- | ---------------------------------- |
+| `users`              | User accounts                 | 1:N with courses, sessions, quotas |
+| `courses`            | Course organization           | 1:N with files                     |
+| `files`              | PDF files                     | 1:N with topics, sessions          |
+| `topic_groups`       | Knowledge structure (level 1) | 1:N with sub_topics, tests         |
+| `sub_topics`         | Knowledge structure (level 2) | 1:N with sub_topic_progress        |
+| `topic_tests`        | Cached test questions         | N:1 with topic_groups              |
+| `learning_sessions`  | User learning state           | 1:N with progress records          |
+| `topic_progress`     | Topic completion status       | N:1 with sessions                  |
+| `sub_topic_progress` | Sub-topic confirmation        | N:1 with sessions                  |
+| `quotas`             | Usage limits                  | N:1 with users                     |
+| `admins`             | Admin accounts (separate)     | Independent                        |
+
+### 5.3 Indexes
+
+**Performance-Critical Indexes:**
+
+```sql
+-- User lookups
+CREATE INDEX idx_users_email ON users(email);
+
+-- Course listing
+CREATE INDEX idx_courses_user_created ON courses(user_id, created_at DESC);
+
+-- File listing
+CREATE INDEX idx_files_course_created ON files(course_id, created_at DESC);
+CREATE INDEX idx_files_status ON files(status);
+CREATE INDEX idx_files_structure_status ON files(structure_status);
+
+-- Learning session lookups
+CREATE UNIQUE INDEX idx_sessions_user_file ON learning_sessions(user_id, file_id);
+CREATE INDEX idx_sessions_user_status ON learning_sessions(user_id, status);
+
+-- Progress queries
+CREATE INDEX idx_topic_progress_session ON topic_progress(session_id, status);
+
+-- Quota management
+CREATE INDEX idx_quotas_reset ON quotas(reset_at);
+```
+
+### 5.4 Cascade Delete Strategy
+
+```
+User DELETE
+  └─► Course DELETE
+        └─► File DELETE
+              ├─► TopicGroup DELETE
+              │     ├─► SubTopic DELETE
+              │     │     └─► SubTopicProgress DELETE
+              │     ├─► TopicTest DELETE
+              │     └─► TopicProgress DELETE
+              ├─► ExtractedImage DELETE
+              └─► LearningSession DELETE
+                    ├─► TopicProgress DELETE
+                    └─► SubTopicProgress DELETE
 ```
 
 ---
 
-## 5. 文件存储方案
+## 6. API Design
 
-### 5.1 存储结构
-
-```
-bucket: luma-files
-└── {user_id}/
-    └── {course_id}/
-        └── {file_id}.pdf
-```
-
-### 5.2 上传流程（支持断点续传）
-
-```
-1. POST /api/files/upload-url → 获取签名 URL
-2. 前端使用 TUS 协议上传（显示进度条）
-3. 上传完成 → POST /api/files/confirm
-4. 后端：status = processing → 扫描件检测 → status = ready/failed
-```
-
-### 5.3 断点续传实现
-
-Supabase Storage 支持 resumable upload，使用原生 API：
+### 6.1 API Response Format
 
 ```typescript
-// 1. 后端生成签名上传 URL
-const { data, error } = await supabase.storage
-  .from('luma-files')
-  .createSignedUploadUrl(`${userId}/${courseId}/${fileId}.pdf`);
-
-// 2. 前端上传（支持断点续传）
-async function uploadFile(
-  file: File, 
-  signedUrl: string, 
-  token: string,
-  onProgress: (pct: number) => void
-) {
-  const xhr = new XMLHttpRequest();
-  
-  xhr.upload.onprogress = (e) => {
-    if (e.lengthComputable) {
-      onProgress(Math.round((e.loaded / e.total) * 100));
-    }
-  };
-  
-  xhr.open('PUT', signedUrl);
-  xhr.setRequestHeader('Authorization', `Bearer ${token}`);
-  xhr.send(file);
-  
-  return new Promise((resolve, reject) => {
-    xhr.onload = () => xhr.status === 200 ? resolve(true) : reject(xhr.statusText);
-    xhr.onerror = () => reject('Upload failed');
-  });
+// Success Response
+interface ApiSuccessResponse<T> {
+  success: true
+  data: T
 }
-```
 
-> 对于超大文件（>50MB），可使用 `tus-js-client` 配合自建 TUS 服务器，MVP 阶段暂用 Supabase 原生方案
-
-### 5.4 限制检查
-
-```typescript
-async function checkLimits(userId: string, fileSize: number) {
-  // 单文件 ≤200MB
-  if (fileSize > 200 * 1024 * 1024) throw new Error('文件超过 200MB');
-  
-  // 用户总存储 ≤5GB
-  const total = await prisma.file.aggregate({
-    where: { course: { userId } },
-    _sum: { fileSize: true }
-  });
-  if ((total._sum.fileSize || 0) + fileSize > 5 * 1024 * 1024 * 1024) {
-    throw new Error('已达存储上限 5GB');
+// Error Response
+interface ApiErrorResponse {
+  success: false
+  error: {
+    code: string
+    message: string
   }
 }
 ```
+
+### 6.2 API Endpoints Summary
+
+#### Authentication (`/api/auth/*`)
+
+| Method | Endpoint                        | Description               |
+| ------ | ------------------------------- | ------------------------- |
+| POST   | `/api/auth/register`            | Register new user         |
+| POST   | `/api/auth/login`               | Login with credentials    |
+| POST   | `/api/auth/logout`              | Logout and clear session  |
+| GET    | `/api/auth/verify`              | Verify email token        |
+| POST   | `/api/auth/reset-password`      | Request password reset    |
+| POST   | `/api/auth/confirm-reset`       | Confirm password reset    |
+| POST   | `/api/auth/resend-verification` | Resend verification email |
+
+#### Courses (`/api/courses/*`)
+
+| Method | Endpoint                 | Description         |
+| ------ | ------------------------ | ------------------- |
+| GET    | `/api/courses`           | List user's courses |
+| POST   | `/api/courses`           | Create new course   |
+| GET    | `/api/courses/:id`       | Get course details  |
+| PATCH  | `/api/courses/:id`       | Update course       |
+| DELETE | `/api/courses/:id`       | Delete course       |
+| GET    | `/api/courses/:id/files` | List course files   |
+
+#### Files (`/api/files/*`)
+
+| Method | Endpoint                       | Description                |
+| ------ | ------------------------------ | -------------------------- |
+| POST   | `/api/files/upload-url`        | Get presigned upload URL   |
+| POST   | `/api/files/confirm`           | Confirm upload completion  |
+| GET    | `/api/files/:id`               | Get file details           |
+| DELETE | `/api/files/:id`               | Delete file                |
+| GET    | `/api/files/:id/download-url`  | Get download URL           |
+| GET    | `/api/files/:id/images`        | Get extracted images       |
+| POST   | `/api/files/:id/extract/retry` | Retry structure extraction |
+
+#### AI Interactive Tutor (`/api/learn/*`)
+
+| Method | Endpoint                          | Description                   |
+| ------ | --------------------------------- | ----------------------------- |
+| POST   | `/api/files/:id/learn/start`      | Start/resume learning session |
+| GET    | `/api/learn/sessions/:id`         | Get session details           |
+| POST   | `/api/learn/sessions/:id/explain` | Get explanation (SSE)         |
+| POST   | `/api/learn/sessions/:id/confirm` | Confirm understanding         |
+| POST   | `/api/learn/sessions/:id/test`    | Start/get test                |
+| POST   | `/api/learn/sessions/:id/answer`  | Submit test answer            |
+| POST   | `/api/learn/sessions/:id/skip`    | Skip question                 |
+| POST   | `/api/learn/sessions/:id/next`    | Advance to next topic         |
+| POST   | `/api/learn/sessions/:id/pause`   | Pause session                 |
+
+#### Quota (`/api/quota/*`)
+
+| Method | Endpoint     | Description              |
+| ------ | ------------ | ------------------------ |
+| GET    | `/api/quota` | Get current quota status |
+
+#### Admin (`/api/admin/*`)
+
+| Method | Endpoint                     | Description             |
+| ------ | ---------------------------- | ----------------------- |
+| POST   | `/api/admin/login`           | Admin login             |
+| GET    | `/api/admin/stats`           | System statistics       |
+| GET    | `/api/admin/users`           | List users              |
+| GET    | `/api/admin/cost`            | AI cost statistics      |
+| GET    | `/api/admin/cost/mathpix`    | Mathpix cost statistics |
+| GET    | `/api/admin/workers`         | Worker health status    |
+| POST   | `/api/admin/users/:id/quota` | Adjust user quota       |
+
+### 6.3 Error Codes
+
+| Code                        | HTTP Status | Description                          |
+| --------------------------- | ----------- | ------------------------------------ |
+| `AUTH_INVALID_CREDENTIALS`  | 401         | Invalid email or password            |
+| `AUTH_EMAIL_NOT_VERIFIED`   | 403         | Email not verified                   |
+| `AUTH_ACCOUNT_LOCKED`       | 403         | Account locked after failed attempts |
+| `COURSE_LIMIT_REACHED`      | 400         | Max 6 courses reached                |
+| `FILE_TOO_LARGE`            | 400         | File exceeds 200MB                   |
+| `FILE_TOO_MANY_PAGES`       | 400         | File exceeds 500 pages               |
+| `FILE_DUPLICATE_NAME`       | 400         | File name already exists             |
+| `STORAGE_LIMIT_REACHED`     | 400         | 5GB storage limit reached            |
+| `TUTOR_STRUCTURE_NOT_READY` | 400         | Knowledge structure not extracted    |
+| `TUTOR_STRUCTURE_FAILED`    | 400         | Structure extraction failed          |
+| `TUTOR_QUOTA_EXCEEDED`      | 400         | Monthly quota exhausted              |
 
 ---
 
-## 6. PDF 处理流程
+## 7. Core Feature: AI Interactive Tutor
 
-### 6.1 处理策略
+### 7.1 Knowledge Structure Extraction
 
-| 时机 | 处理内容 | 方式 |
-|------|----------|------|
-| 上传时 | 扫描件检测 | 同步（几秒） |
-| 用户打开页面时 | 文本提取 + 图片检测 | 按需实时 |
-| 用户触发讲解时 | AI 生成 | 按需 |
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                      PDF Structure Extraction Pipeline                       │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│  ┌─────────────┐    ┌─────────────┐    ┌─────────────┐    ┌─────────────┐ │
+│  │   Upload    │    │   Trigger   │    │   Extract   │    │   Store     │ │
+│  │   Confirm   │───►│   Job       │───►│   Content   │───►│   Results   │ │
+│  └─────────────┘    └─────────────┘    └──────┬──────┘    └─────────────┘ │
+│                                               │                            │
+│                           ┌───────────────────┼───────────────────┐        │
+│                           │                   │                   │        │
+│                           ▼                   ▼                   ▼        │
+│                    ┌─────────────┐    ┌─────────────┐    ┌─────────────┐  │
+│                    │  PyMuPDF    │    │  PDF Text   │    │   AI        │  │
+│                    │  (Images)   │    │  Extraction │    │  Analysis   │  │
+│                    └─────────────┘    └─────────────┘    └─────────────┘  │
+│                           │                                    │           │
+│                           ▼                                    ▼           │
+│                    ┌─────────────┐                     ┌─────────────────┐ │
+│                    │ R2 Storage  │                     │ TopicGroup +    │ │
+│                    │ (Images)    │                     │ SubTopic        │ │
+│                    └─────────────┘                     └─────────────────┘ │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
 
-### 6.2 扫描件检测
+### 7.2 Two-Layer Knowledge Structure
+
+```
+TopicGroup (总知识点)
+├── type: CORE | SUPPORTING
+├── pageStart: number
+├── pageEnd: number
+│
+└── SubTopic[] (子知识点)
+    ├── title: string
+    └── metadata: {
+          summary: string
+          keywords: string[]
+          relatedPages: number[]
+        }
+```
+
+### 7.3 Five-Layer Explanation Model
 
 ```typescript
-async function detectScanned(pdfBuffer: Buffer): Promise<boolean> {
-  const pdf = await getDocument({ data: pdfBuffer }).promise;
-  const samplePages = Math.min(5, pdf.numPages);
-  let textPages = 0;
-  
-  for (let i = 1; i <= samplePages; i++) {
-    const page = await pdf.getPage(i);
-    const text = await page.getTextContent();
-    if (text.items.length > 50) textPages++;
+interface SubTopicExplanation {
+  explanation: {
+    motivation: string // 为什么要学这个
+    intuition: string // 通俗解释
+    mathematics: string // 公式推导 (LaTeX)
+    theory: string // 严谨定义
+    application: string // 实际例子
   }
-  
-  // 80% 以上页面没有文字 → 扫描件
-  return textPages / samplePages < 0.2;
 }
 ```
 
-### 6.3 文本提取（实时，不缓存）
+### 7.4 Learning Session Flow
 
-```typescript
-async function extractPageText(fileId: string, pageNumber: number): Promise<string> {
-  const pdfBuffer = await downloadPDF(fileId);
-  const pdf = await getDocument({ data: pdfBuffer }).promise;
-  const page = await pdf.getPage(pageNumber);
-  const content = await page.getTextContent();
-  return content.items.map(item => item.str).join(' ');
-}
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                           Learning Session Flow                              │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│  ┌─────────────┐                                                            │
+│  │ Start/Resume│                                                            │
+│  │   Session   │                                                            │
+│  └──────┬──────┘                                                            │
+│         │                                                                    │
+│         ▼                                                                    │
+│  ┌─────────────────────────────────────────────────────────────┐           │
+│  │                    For Each TopicGroup                       │           │
+│  │  ┌─────────────────────────────────────────────────────┐    │           │
+│  │  │              For Each SubTopic                      │    │           │
+│  │  │  ┌───────────┐    ┌───────────┐    ┌───────────┐   │    │           │
+│  │  │  │ EXPLAINING│───►│ Show      │───►│ CONFIRMING│   │    │           │
+│  │  │  │           │    │ 5 Layers  │    │           │   │    │           │
+│  │  │  └───────────┘    └───────────┘    └─────┬─────┘   │    │           │
+│  │  │                                          │         │    │           │
+│  │  │                                 Click "I Understand"    │           │
+│  │  │                                          │         │    │           │
+│  │  │                                          ▼         │    │           │
+│  │  │                                   [Next SubTopic]  │    │           │
+│  │  └─────────────────────────────────────────────────────┘    │           │
+│  │                                                              │           │
+│  │  All SubTopics confirmed                                     │           │
+│  │         │                                                    │           │
+│  │         ▼                                                    │           │
+│  │  ┌───────────┐    ┌───────────┐    ┌───────────┐            │           │
+│  │  │  TESTING  │───►│ Show Test │───►│  Submit   │            │           │
+│  │  │           │    │ Questions │    │  Answers  │            │           │
+│  │  └───────────┘    └───────────┘    └─────┬─────┘            │           │
+│  │                                          │                   │           │
+│  │                   Test Complete (CORE: 2/3, SUPPORTING: 1/1) │           │
+│  │                                          │                   │           │
+│  │                                          ▼                   │           │
+│  │                                   [Next TopicGroup]          │           │
+│  └──────────────────────────────────────────────────────────────┘           │
+│                                                                             │
+│  All TopicGroups Complete                                                   │
+│         │                                                                    │
+│         ▼                                                                    │
+│  ┌─────────────┐                                                            │
+│  │  Session    │                                                            │
+│  │  COMPLETED  │                                                            │
+│  └─────────────┘                                                            │
+└─────────────────────────────────────────────────────────────────────────────┘
 ```
 
-> pdf.js 提取速度很快（毫秒级），MVP 不做缓存，避免一致性问题
+### 7.5 Test Pass Conditions
 
-### 6.4 图片区域检测
+| Topic Type | Questions | Pass Condition |
+| ---------- | --------- | -------------- |
+| CORE       | 3         | ≥ 2 correct    |
+| SUPPORTING | 1         | 1 correct      |
 
-```typescript
-async function detectImages(fileId: string, pageNumber: number) {
-  // 检查是否已检测
-  const existing = await prisma.imageRegion.findMany({
-    where: { fileId, pageNumber }
-  });
-  if (existing.length) return existing;
-  
-  // 检测图片
-  const page = await getPage(fileId, pageNumber);
-  const ops = await page.getOperatorList();
-  const regions = [];
-  
-  for (let i = 0; i < ops.fnArray.length; i++) {
-    if (ops.fnArray[i] === OPS.paintImageXObject) {
-      regions.push({ fileId, pageNumber, bbox: extractBBox(ops, i) });
-    }
-  }
-  
-  await prisma.imageRegion.createMany({ data: regions });
-  return regions;
-}
-```
+**Additional Rules:**
+
+- Single question skip: After 3 wrong attempts, can skip (counts as wrong)
+- Weak point marking: ≥ 3 wrong answers in a TopicGroup
 
 ---
 
-## 7. AI 集成方案
+## 8. Authentication & Security
 
-### 7.1 多平台定价对比
+### 8.1 Authentication Flow
 
-| 厂商 | 模型 | Input $/1M | Output $/1M |
-|------|------|------------|-------------|
-| **Google** | Gemini 2.5 Pro (≤200K) | $1.25 | $5.00 |
-| Google | Gemini 2.5 Pro (>200K) | $2.50 | $10.00 |
-| OpenAI | GPT-4o | $2.50 | $10.00 |
-| Anthropic | Claude Sonnet 4.5 | $3.00 | $15.00 |
-| Google | Gemini 2.5 Flash | $0.15 | $0.60 |
-| Anthropic | Claude Haiku 3 | $0.25 | $1.25 |
+```
+┌─────────────┐    ┌─────────────┐    ┌─────────────┐    ┌─────────────┐
+│   Client    │    │  Next.js    │    │  Supabase   │    │  Database   │
+│             │    │  API        │    │  Auth       │    │             │
+└──────┬──────┘    └──────┬──────┘    └──────┬──────┘    └──────┬──────┘
+       │                  │                  │                  │
+       │  Login Request   │                  │                  │
+       │─────────────────►│                  │                  │
+       │                  │  Validate        │                  │
+       │                  │─────────────────►│                  │
+       │                  │                  │  Create Session  │
+       │                  │                  │─────────────────►│
+       │                  │  Session Token   │                  │
+       │                  │◄─────────────────│                  │
+       │  Set httpOnly    │                  │                  │
+       │  Cookie          │                  │                  │
+       │◄─────────────────│                  │                  │
+       │                  │                  │                  │
+```
 
-> MVP 单页讲解 tokens 远小于 200K，使用标准定价
+### 8.2 Security Measures
 
-### 7.2 模型选择
+| Measure          | Implementation                                                |
+| ---------------- | ------------------------------------------------------------- |
+| Password Hashing | bcrypt with salt                                              |
+| Session Storage  | httpOnly cookies (7 days default, 30 days with "remember me") |
+| CSRF Protection  | Token-based validation on all mutations                       |
+| Rate Limiting    | Auth: 10 req/15min, API: 100 req/min, AI: 20 req/min          |
+| Input Validation | Zod schemas on all endpoints                                  |
+| SQL Injection    | Prisma parameterized queries                                  |
+| XSS Prevention   | React auto-escaping + Content Security Policy                 |
+| Account Lockout  | 5 failed attempts → 30 min lock                               |
 
-| 功能 | 主力模型 | 备选 | 原因 |
-|------|----------|------|------|
-| 讲解 | Gemini 2.5 Pro | Claude Sonnet | 专业内容质量优先 |
-| 问答 | Gemini 2.5 Pro | GPT-4o | 推理能力强 |
-
-### 7.3 成本估算
-
-| 功能 | 月配额 | tokens/次 | 单次成本 | 月成本/用户 |
-|------|--------|-----------|----------|-------------|
-| 讲解 | 300 | ~2000 | ~$0.006 | ~$1.80 |
-| 问答 | 150 | ~3000 | ~$0.005 | ~$0.75 |
-| **总计** | | | | **~$2.55** |
-
-### 7.4 多平台封装
+### 8.3 Rate Limiting Strategy
 
 ```typescript
-// lib/ai/index.ts
-export const MODELS = {
-  gemini: { explain: 'gemini-2.5-pro', qa: 'gemini-2.5-pro' },
-  openai: { explain: 'gpt-4o', qa: 'gpt-4o' },
-  anthropic: { explain: 'claude-3-5-sonnet', qa: 'claude-3-5-sonnet' },
-};
-
-export async function complete(prompt: string, task: 'explain' | 'qa') {
-  const providers = ['gemini', 'openai', 'anthropic'];
-  
-  for (const provider of providers) {
-    try {
-      return await callProvider(provider, prompt, MODELS[provider][task]);
-    } catch (e) {
-      console.error(`${provider} failed, trying next...`);
-    }
-  }
-  throw new Error('All providers failed');
+// Rate limiters configuration
+const rateLimiters = {
+  auth: { windowMs: 15 * 60 * 1000, maxRequests: 10 },
+  api: { windowMs: 60 * 1000, maxRequests: 100 },
+  ai: { windowMs: 60 * 1000, maxRequests: 20 },
 }
 ```
 
-### 7.5 讲解生成
-
-```typescript
-async function generateExplanation(fileId: string, page: number, locale: 'en' | 'zh') {
-  // 1. 检查缓存
-  const cached = await prisma.explanation.findUnique({
-    where: { fileId_pageNumber: { fileId, pageNumber: page } }
-  });
-  if (cached) return cached;
-  
-  // 2. 提取内容
-  const text = await extractPageText(fileId, page);
-  const images = await detectImages(fileId, page);
-  
-  // 3. 构造 prompt
-  const prompt = `
-${locale === 'zh' ? '用中文解释以下课程内容：' : 'Explain the following content:'}
-
-${text}
-
-${images.length ? `页面包含 ${images.length} 张图片，请一并解释。` : ''}
-
-请提供：1. 主要概念总结 2. 重点知识点 ${images.length ? '3. 图片解释' : ''}
-`;
-
-  // 4. 调用 AI
-  const response = await complete(prompt, 'explain');
-  
-  // 5. 记录并存储
-  await logAIUsage(fileId, 'explain', response.usage);
-  return prisma.explanation.create({
-    data: { fileId, pageNumber: page, content: response.text }
-  });
-}
-```
-
-### 7.6 配额管理
-
-```typescript
-async function withQuota<T>(
-  userId: string,
-  bucket: 'learningInteractions' | 'autoExplain',
-  fn: () => Promise<T>
-): Promise<T> {
-  const quota = await prisma.quota.findUnique({
-    where: { userId_bucket: { userId, bucket } }
-  });
-  
-  if (!quota || quota.used >= quota.limit) {
-    throw new Error('本月配额已用尽');
-  }
-  
-  // 预扣
-  await prisma.quota.update({
-    where: { id: quota.id },
-    data: { used: { increment: 1 } }
-  });
-  
-  try {
-    return await Promise.race([
-      fn(),
-      new Promise((_, reject) => setTimeout(() => reject(new Error('超时')), 30000))
-    ]) as T;
-  } catch (e) {
-    // 失败退还
-    await prisma.quota.update({
-      where: { id: quota.id },
-      data: { used: { decrement: 1 } }
-    });
-    throw e;
-  }
-}
-```
-
-### 7.7 RAG 预留
-
-MVP 不实现 RAG，问答只用当前页 ±2 页作为上下文。预留接口：
-
-```typescript
-// lib/rag.ts
-export interface RAGProvider {
-  index(fileId: string, chunks: string[]): Promise<void>;
-  search(query: string, topK: number): Promise<string[]>;
-}
-
-// MVP: 空实现
-export const rag: RAGProvider = {
-  async index() {},
-  async search() { return []; },
-};
-```
+**Production Note:** Current in-memory rate limiting must be migrated to Upstash Redis for serverless compatibility.
 
 ---
 
-## 8. API 设计
+## 9. State Management
 
-### 8.1 认证
+### 9.1 State Categories
 
-| Method | Path | 说明 |
-|--------|------|------|
-| POST | /api/auth/register | 注册 |
-| POST | /api/auth/login | 登录 |
-| POST | /api/auth/logout | 登出 |
-| POST | /api/auth/resend-verification | 重发验证邮件 |
-| POST | /api/auth/reset-password | 请求重置密码 |
-| POST | /api/auth/confirm-reset | 确认重置 |
+| State Type   | Tool                 | Use Cases                           |
+| ------------ | -------------------- | ----------------------------------- |
+| Server State | TanStack Query       | Courses, files, sessions, user data |
+| Client State | Zustand              | UI state, learning view preferences |
+| Form State   | React Hook Form      | All forms with validation           |
+| URL State    | Next.js searchParams | Topic index, filters, pagination    |
 
-### 8.2 课程
-
-| Method | Path | 说明 |
-|--------|------|------|
-| GET | /api/courses | 列表 |
-| POST | /api/courses | 创建 |
-| GET | /api/courses/[id] | 详情 |
-| PATCH | /api/courses/[id] | 更新 |
-| DELETE | /api/courses/[id] | 删除 |
-
-### 8.3 文件
-
-| Method | Path | 说明 |
-|--------|------|------|
-| GET | /api/courses/[id]/files | 文件列表 |
-| POST | /api/files/upload-url | 获取上传 URL |
-| POST | /api/files/confirm | 确认上传完成 |
-| DELETE | /api/files/[id] | 删除 |
-| GET | /api/files/[id]/download-url | 下载 URL |
-
-### 8.4 AI
-
-| Method | Path | 说明 |
-|--------|------|------|
-| POST | /api/ai/explain | 生成讲解 |
-| POST | /api/ai/qa | 问答 |
-| GET | /api/files/[id]/explanations/[page] | 获取已有讲解 |
-| GET | /api/files/[id]/qa | 问答历史 |
-
-### 8.5 阅读进度
-
-| Method | Path | 说明 |
-|--------|------|------|
-| GET | /api/files/[id]/progress | 获取 |
-| PATCH | /api/files/[id]/progress | 更新 |
-
-### 8.6 配额 & 设置
-
-| Method | Path | 说明 |
-|--------|------|------|
-| GET | /api/quota | 配额信息 |
-| GET | /api/settings | 用户设置 |
-| PATCH | /api/settings | 更新设置 |
-
-### 8.7 管理后台
-
-| Method | Path | 说明 |
-|--------|------|------|
-| POST | /api/admin/login | 登录 |
-| GET | /api/admin/stats | 系统概览 |
-| GET | /api/admin/users | 用户列表 |
-| POST | /api/admin/users/[id]/quota | 调整配额 |
-| GET | /api/admin/ai-usage | AI 使用统计 |
-| GET | /api/admin/workers | Worker 状态 |
-| GET | /api/admin/audit-logs | 审计日志列表 |
-
-### 8.8 Cron
-
-| Method | Path | 说明 |
-|--------|------|------|
-| GET | /api/cron/reset-quota | 配额重置 |
-| GET | /api/cron/check-workers | 僵尸任务检测 |
-| GET | /api/cron/cleanup-uploads | 清理失败上传 |
-
-### 8.9 响应格式
+### 9.2 TanStack Query Configuration
 
 ```typescript
-// 成功
-{ success: true, data: { ... } }
-
-// 失败
-{ success: false, error: { code: 'QUOTA_EXCEEDED', message: '配额已用尽' } }
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 5 * 60 * 1000, // 5 minutes
+      gcTime: 30 * 60 * 1000, // 30 minutes
+      refetchOnWindowFocus: true,
+      retry: 1,
+    },
+  },
+})
 ```
 
----
-
-## 9. 后台任务
-
-### 9.1 使用外部 Cron 服务
-
-Vercel Hobby 限制大，使用 [cron-job.org](https://cron-job.org)（免费）。
-
-| 任务 | Schedule | 说明 |
-|------|----------|------|
-| 配额重置 | `0 0 * * *` | 每日检查并重置到期配额 |
-| 僵尸检测 | `*/10 * * * *` | 检测并处理卡住的任务 |
-| 清理上传 | `0 3 * * *` | 清理 uploading 状态超 24h 的文件 |
-
-### 9.2 僵尸任务处理
+### 9.3 Key Hooks
 
 ```typescript
-async function checkZombieTasks() {
-  const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000);
-  
-  // 找到 processing 状态超过 10 分钟的文件（基于 updatedAt）
-  const zombies = await prisma.file.findMany({
-    where: {
-      status: 'processing',
-      updatedAt: { lt: tenMinutesAgo }
-    }
-  });
-  
-  for (const file of zombies) {
-    // 1. 标记为失败
-    await prisma.file.update({
-      where: { id: file.id },
-      data: { status: 'failed' }
-    });
-    
-    // 2. 记录日志
-    console.error(`Zombie task detected: file ${file.id}`);
-    
-    // 3. (可选) 清理存储中的文件
-    await supabase.storage.from('luma-files').remove([file.storagePath]);
-  }
-  
-  return { processed: zombies.length };
-}
-```
+// Server state hooks
+useUser() // Current user data
+useCourses() // Course list with mutations
+useFiles(courseId) // File list with upload mutations
+useLearningSession(id) // Session state with actions
+useQuota() // Quota status
 
-### 9.3 安全配置
-
-```typescript
-// Cron 端点验证
-export async function GET(req: Request) {
-  if (req.headers.get('Authorization') !== `Bearer ${process.env.CRON_SECRET}`) {
-    return new Response('Unauthorized', { status: 401 });
-  }
+// Client state (Zustand)
+interface LearningStore {
+  currentLayer: ExplanationLayer
+  isStreaming: boolean
+  streamContent: string
+  testMode: boolean
   // ...
 }
 ```
 
-cron-job.org 配置 Header: `Authorization: Bearer your-secret`
+---
 
-### 9.4 配额重置逻辑
+## 10. Background Jobs
+
+### 10.1 Trigger.dev Jobs
+
+| Job                     | Trigger               | Timeout | Purpose                              |
+| ----------------------- | --------------------- | ------- | ------------------------------------ |
+| `extract-pdf-structure` | File upload confirmed | 5 min   | Extract knowledge structure + images |
+| `quota-reset`           | Daily cron            | 1 min   | Reset monthly quotas                 |
+
+### 10.2 Structure Extraction Job Flow
 
 ```typescript
-async function resetQuotas() {
-  const now = new Date();
-  const quotas = await prisma.quota.findMany({
-    where: { resetAt: { lte: now } }
-  });
-  
-  for (const q of quotas) {
-    const nextReset = calculateNextReset(q.resetAt); // 基于用户注册日
-    await prisma.quota.update({
-      where: { id: q.id },
-      data: { used: 0, resetAt: nextReset }
-    });
-    await logQuotaChange(q.userId, q.bucket, -q.used, 'system_reset');
-  }
+export const extractPdfStructure = task({
+  id: 'extract-pdf-structure',
+  run: async (payload: { fileId: string }) => {
+    // 1. Update status to PROCESSING
+    // 2. Download PDF from Supabase Storage
+    // 3. Extract images (PyMuPDF) → Upload to R2
+    // 4. Extract text content
+    // 5. Batch AI analysis (120 pages/batch)
+    // 6. Create TopicGroup + SubTopic records
+    // 7. Update status to READY
+  },
+})
+```
+
+### 10.3 Error Handling
+
+- **Timeout:** After 5 minutes, mark as FAILED
+- **Retry:** Manual retry only (from head)
+- **Error Storage:** `structure_error` field stores error message
+
+---
+
+## 11. Integration Points
+
+### 11.1 Supabase Integration
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                              Supabase                                        │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐            │
+│  │      Auth       │  │     Storage     │  │    Database     │            │
+│  │                 │  │                 │  │  (via Prisma)   │            │
+│  │  - Login/Logout │  │  - PDF uploads  │  │                 │            │
+│  │  - Sessions     │  │  - Signed URLs  │  │  - All tables   │            │
+│  └─────────────────┘  └─────────────────┘  └─────────────────┘            │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### 11.2 AI Services
+
+```typescript
+// OpenRouter client configuration
+const aiClient = {
+  baseURL: 'https://openrouter.ai/api/v1',
+  model: 'anthropic/claude-3.5-sonnet',
+  maxTokens: 4096,
 }
+
+// Mathpix client configuration
+const mathpixClient = {
+  baseURL: 'https://api.mathpix.com/v3',
+  formats: ['latex_simplified'],
+  costPerRequest: 0.004, // USD
+}
+```
+
+### 11.3 Cloudflare R2
+
+```typescript
+// Image storage paths
+const imagePath = `images/${fileId}/${pageNumber}_${imageIndex}.png`
+
+// Signed URL generation (1 hour expiry)
+const signedUrl = await r2Client.getSignedUrl(imagePath, { expiresIn: 3600 })
 ```
 
 ---
 
-## 10. 部署方案
+## 12. Performance Considerations
 
-### 10.1 环境变量
+### 12.1 Optimization Strategies
 
-```env
+| Area            | Strategy                     | Target          |
+| --------------- | ---------------------------- | --------------- |
+| AI Explanations | SSE streaming                | First byte < 2s |
+| PDF Loading     | Lazy loading + pagination    | < 1s per page   |
+| Image Loading   | Lazy loading + signed URLs   | < 500ms         |
+| Database        | Indexed queries + pagination | < 100ms         |
+| Static Assets   | CDN + caching                | Cache hit > 95% |
+
+### 12.2 Caching Strategy
+
+```typescript
+// Query cache times
+const cacheTimes = {
+  user: Infinity, // Until mutation
+  courses: 5 * 60 * 1000, // 5 minutes
+  files: 5 * 60 * 1000, // 5 minutes
+  session: Infinity, // Until mutation
+  quota: 60 * 1000, // 1 minute
+}
+```
+
+### 12.3 Database Optimization
+
+- **Batch Processing:** PDF structure extraction in 120-page batches
+- **Eager Loading:** Session queries include progress relations
+- **Pagination:** Cursor-based for large lists
+- **Aggregation:** Admin stats use raw SQL for efficiency
+
+---
+
+## 13. Deployment Strategy
+
+### 13.1 Infrastructure
+
+| Service         | Platform         | Purpose          |
+| --------------- | ---------------- | ---------------- |
+| Frontend + API  | Vercel           | Next.js hosting  |
+| Database        | Supabase         | PostgreSQL       |
+| File Storage    | Supabase Storage | PDF files        |
+| Image Storage   | Cloudflare R2    | Extracted images |
+| Background Jobs | Trigger.dev      | Async processing |
+| Monitoring      | Sentry           | Error tracking   |
+
+### 13.2 Environment Variables
+
+```bash
+# Database
+DATABASE_URL=
+DIRECT_URL=
+
 # Supabase
 NEXT_PUBLIC_SUPABASE_URL=
 NEXT_PUBLIC_SUPABASE_ANON_KEY=
 SUPABASE_SERVICE_ROLE_KEY=
-SUPABASE_STORAGE_BUCKET=luma-files
 
-# Database
-DATABASE_URL=
+# AI Services
+OPENROUTER_API_KEY=
+MATHPIX_APP_ID=
+MATHPIX_APP_KEY=
 
-# AI (多平台)
-GOOGLE_AI_API_KEY=
-OPENAI_API_KEY=
-ANTHROPIC_API_KEY=
+# Cloudflare R2
+R2_ACCOUNT_ID=
+R2_ACCESS_KEY_ID=
+R2_SECRET_ACCESS_KEY=
+R2_BUCKET_NAME=
+
+# Trigger.dev
+TRIGGER_API_KEY=
+TRIGGER_API_URL=
 
 # Admin
 SUPER_ADMIN_EMAIL=
-ADMIN_JWT_SECRET=
-
-# Cron
-CRON_SECRET=
+SUPER_ADMIN_PASSWORD_HASH=
 ```
 
-### 10.2 Vercel 配置
+### 13.3 CI/CD Pipeline
 
-- Framework: Next.js
-- Build: `prisma generate && next build`
-- Node.js: 20.x
+```yaml
+# .github/workflows/deploy.yml
+name: Deploy
+on:
+  push:
+    branches: [main]
 
-### 10.3 数据库迁移
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: pnpm install
+      - run: pnpm test
+      - run: pnpm lint
 
-```bash
-# 开发
-npx prisma migrate dev
-
-# 生产
-npx prisma migrate deploy
+  deploy:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: pnpm prisma migrate deploy
+      - uses: vercel/actions/deploy@v1
 ```
 
 ---
 
-## 11. 开发规范
+## 14. Implementation Phases
 
-### 11.1 Git 工作流
+### Phase Overview
+
+| Phase | Focus                | Tasks | Duration  |
+| ----- | -------------------- | ----- | --------- |
+| 0     | Foundation           | 8     | 1 week    |
+| 1     | Authentication       | 15    | 1 week    |
+| 2     | Course Management    | 9     | 0.5 week  |
+| 3     | File Management      | 14    | 1 week    |
+| 4     | AI Interactive Tutor | 27    | 2-3 weeks |
+| 5     | Quota Management     | 7     | 0.5 week  |
+| 6     | User Settings        | 5     | 0.5 week  |
+| 7     | Admin Dashboard      | 19    | 1 week    |
+| 8     | PDF Reader           | 4     | 0.5 week  |
+| 9     | Testing              | 7     | 1 week    |
+| 10    | Deployment           | 4     | 0.5 week  |
+
+### Critical Path
 
 ```
-main (生产)
-└── develop (开发主线)
-    ├── feature/xxx
-    └── fix/xxx
+FND-001 → AUTH-001 → CRS-001 → FILE-001 → TUTOR-001 → DEPLOY-001
+   │         │          │          │           │
+   └─────────┴──────────┴──────────┴───────────┘
+                    Sequential Dependencies
 ```
 
-### 11.2 提交规范
+### Parallel Development Opportunities
 
-```
-feat: 新功能
-fix: 修复
-docs: 文档
-refactor: 重构
-test: 测试
-chore: 工具/构建
-```
-
-### 11.3 代码规范
-
-- ESLint + Prettier
-- TypeScript strict
-- API 统一返回 `{ success, data?, error? }`
+- **User Settings (Phase 6)** can run parallel with **Phase 4**
+- **Admin Dashboard (Phase 7)** can run parallel with **Phase 4-5**
+- **Testing (Phase 9)** can start after each phase completion
 
 ---
 
-## 附录: 技术决策记录
+## Appendix A: TypeScript Type Definitions
 
-| 决策 | 原因 |
-|------|------|
-| PDF 懒加载处理 | 上传快，按需消耗资源 |
-| MVP 不做 RAG | 先验证单页上下文效果 |
-| Supabase Auth | 邮箱验证开箱即用 |
-| MVP 不做登录锁定 | 简化，依赖 Supabase |
-| MVP 不做邮件限流 | 依赖 Supabase |
-| 外部 Cron 服务 | Vercel Hobby 限制大 |
-| 断点续传 | 200MB 大文件体验 |
-| 文本不缓存 | pdf.js 快，避免一致性问题 |
-| 多 LLM 平台 | 稳定性 + 灵活切换 |
-| Gemini 2.5 Pro | 专业内容质量优先，比 Claude 便宜 53% |
-| Prisma ORM | 类型安全，迁移方便 |
+See [src/types/database.ts](../src/types/database.ts) for complete type definitions.
+
+## Appendix B: Prisma Schema
+
+See [prisma/schema.prisma](../prisma/schema.prisma) for complete database schema.
+
+## Appendix C: Task Breakdown
+
+See [docs/task.md](task.md) for detailed implementation tasks.
+
+---
+
+_Document maintained by the Luma Web development team._

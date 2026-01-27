@@ -1,45 +1,27 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
-import { createAuthError, createAuthSuccess } from '@/lib/auth'
-import { AUTH_ERROR_CODES } from '@/types'
+import type { NextRequest } from 'next/server'
+import { successResponse, handleError } from '@/lib/api-response'
+import { SECURITY } from '@/lib/constants'
 import { logger } from '@/lib/logger'
-import { requireCsrf } from '@/lib/csrf'
 
-export async function POST(request: NextRequest) {
+export async function POST(_request: NextRequest) {
   try {
-    // CSRF validation
-    const csrfError = await requireCsrf(request)
-    if (csrfError) return csrfError
+    const response = successResponse({
+      message: 'Logout successful',
+    })
 
-    const supabase = await createClient()
+    // Clear session cookie
+    response.cookies.set(SECURITY.SESSION_COOKIE_NAME, '', {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      maxAge: 0,
+      path: '/',
+    })
 
-    const { error } = await supabase.auth.signOut()
+    logger.info('User logged out')
 
-    if (error) {
-      logger.error('Supabase logout error', error, { action: 'logout' })
-      return NextResponse.json(
-        createAuthError(
-          AUTH_ERROR_CODES.INTERNAL_ERROR,
-          'Logout failed. Please try again'
-        ),
-        { status: 500 }
-      )
-    }
-
-    return NextResponse.json(
-      createAuthSuccess({
-        message: 'Logged out successfully',
-      }),
-      { status: 200 }
-    )
+    return response
   } catch (error) {
-    logger.error('Logout error', error, { action: 'logout' })
-    return NextResponse.json(
-      createAuthError(
-        AUTH_ERROR_CODES.INTERNAL_ERROR,
-        'An unexpected error occurred'
-      ),
-      { status: 500 }
-    )
+    return handleError(error)
   }
 }

@@ -1,183 +1,192 @@
-'use client'
+/**
+ * FILE-013: React Hook for File Management
+ *
+ * This hook provides functionality for:
+ * - Fetching files for a course
+ * - Getting a single file
+ * - Updating file metadata
+ * - Deleting files
+ * - Getting download URLs
+ */
 
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { useCsrf } from './use-csrf'
 import {
-  fetchCourseFiles,
-  requestUploadUrl,
-  confirmUpload,
+  useQuery,
+  useMutation,
+  useQueryClient,
+  type UseQueryOptions,
+} from '@tanstack/react-query'
+import {
+  getFiles,
+  getFile,
+  updateFile,
   deleteFile,
-  type FileResponse,
-  type FilesWithCourse,
-  type UploadUrlResponse,
-  type ConfirmUploadOptions,
+  getDownloadUrl,
+  type FileData,
+  type UpdateFileRequest,
 } from '@/lib/api/files'
-import { STORAGE } from '@/lib/constants'
-
-export const FILES_QUERY_KEY = ['files'] as const
-
-const CSRF_HEADER_NAME = 'X-CSRF-Token'
-const MAX_CSRF_RETRIES = 3
-const CSRF_RETRY_DELAY = 100 // ms
+import { useToast } from './use-toast'
 
 /**
- * Wait for CSRF token with retry mechanism
+ * Query keys for file-related queries
  */
-async function waitForCsrfToken(
-  getHeaders: () => Record<string, string>,
-  refreshToken: () => Promise<void>,
-  retryCount = 0
-): Promise<Record<string, string>> {
-  const headers = getHeaders()
-
-  if (headers[CSRF_HEADER_NAME]) {
-    return headers
-  }
-
-  if (retryCount >= MAX_CSRF_RETRIES) {
-    throw new Error('CSRF token not available after multiple attempts. Please refresh the page.')
-  }
-
-  // Try refreshing the token
-  await refreshToken()
-
-  // Wait a bit for state to update
-  await new Promise((resolve) => setTimeout(resolve, CSRF_RETRY_DELAY))
-
-  // Retry with incremented count
-  return waitForCsrfToken(getHeaders, refreshToken, retryCount + 1)
+export const fileKeys = {
+  all: ['files'] as const,
+  lists: () => [...fileKeys.all, 'list'] as const,
+  list: (courseId: string) => [...fileKeys.lists(), courseId] as const,
+  details: () => [...fileKeys.all, 'detail'] as const,
+  detail: (fileId: string) => [...fileKeys.details(), fileId] as const,
 }
 
 /**
- * Hook for fetching files for a course
+ * Hook to fetch all files for a course
  */
-export function useFiles(courseId: string) {
-  const query = useQuery({
-    queryKey: [...FILES_QUERY_KEY, courseId],
-    queryFn: () => fetchCourseFiles(courseId),
-    enabled: Boolean(courseId),
-  })
-
-  return {
-    ...query,
-    files: query.data?.files ?? [],
-    course: query.data?.course,
-    fileCount: query.data?.files?.length ?? 0,
-    canUploadFile: (query.data?.files?.length ?? 0) < STORAGE.MAX_FILES_PER_COURSE,
-  }
-}
-
-/**
- * Hook for uploading files
- */
-export function useUploadFile(courseId: string) {
-  const queryClient = useQueryClient()
-  const { getHeaders, refreshToken } = useCsrf()
-
-  const uploadMutation = useMutation({
-    mutationFn: async ({
-      fileName,
-      fileSize,
-    }: {
-      fileName: string
-      fileSize: number
-    }) => {
-      const headers = await waitForCsrfToken(getHeaders, refreshToken)
-      return requestUploadUrl(courseId, fileName, fileSize, headers)
-    },
-  })
-
-  const confirmMutation = useMutation({
-    mutationFn: async ({
-      fileId,
-      options,
-    }: {
-      fileId: string
-      options?: ConfirmUploadOptions
-    }) => {
-      const headers = await waitForCsrfToken(getHeaders, refreshToken)
-      return confirmUpload(courseId, fileId, headers, options)
-    },
-    onSuccess: (newFile) => {
-      queryClient.setQueryData<FilesWithCourse>(
-        [...FILES_QUERY_KEY, courseId],
-        (old) => {
-          if (!old) return old
-          return {
-            ...old,
-            files: [...old.files, newFile],
-          }
-        }
-      )
-    },
-  })
-
-  const requestUploadFn = async (
-    fileName: string,
-    fileSize: number
-  ): Promise<UploadUrlResponse> => {
-    return uploadMutation.mutateAsync({ fileName, fileSize })
-  }
-
-  const confirmUploadFn = async (
-    fileId: string,
-    options?: ConfirmUploadOptions
-  ): Promise<FileResponse> => {
-    return confirmMutation.mutateAsync({ fileId, options })
-  }
-
-  return {
-    requestUpload: requestUploadFn,
-    confirmUpload: confirmUploadFn,
-    isLoading: uploadMutation.isPending || confirmMutation.isPending,
-    error: uploadMutation.error || confirmMutation.error,
-  }
-}
-
-/**
- * Hook for deleting files
- */
-export function useDeleteFile(courseId: string) {
-  const queryClient = useQueryClient()
-  const { getHeaders, refreshToken } = useCsrf()
-
-  return useMutation({
-    mutationFn: async (fileId: string) => {
-      const headers = await waitForCsrfToken(getHeaders, refreshToken)
-      return deleteFile(courseId, fileId, headers)
-    },
-    onMutate: async (deletedId) => {
-      // Cancel any outgoing refetches
-      await queryClient.cancelQueries({ queryKey: [...FILES_QUERY_KEY, courseId] })
-
-      // Snapshot the previous value
-      const previousData = queryClient.getQueryData<FilesWithCourse>([
-        ...FILES_QUERY_KEY,
-        courseId,
-      ])
-
-      // Optimistically update
-      queryClient.setQueryData<FilesWithCourse>(
-        [...FILES_QUERY_KEY, courseId],
-        (old) => {
-          if (!old) return old
-          return {
-            ...old,
-            files: old.files.filter((file) => file.id !== deletedId),
-          }
-        }
-      )
-
-      return { previousData }
-    },
-    onError: (_err, _deletedId, context) => {
-      // Rollback on error
-      if (context?.previousData) {
-        queryClient.setQueryData(
-          [...FILES_QUERY_KEY, courseId],
-          context.previousData
-        )
+export function useFiles(
+  courseId: string | undefined,
+  options?: Omit<UseQueryOptions<FileData[], Error>, 'queryKey' | 'queryFn'>
+) {
+  return useQuery<FileData[], Error>({
+    queryKey: courseId ? fileKeys.list(courseId) : [],
+    queryFn: () => {
+      if (!courseId) {
+        throw new Error('Course ID is required')
       }
+      return getFiles(courseId)
+    },
+    enabled: !!courseId,
+    staleTime: 30000, // 30 seconds
+    ...options,
+  })
+}
+
+/**
+ * Hook to fetch a single file
+ */
+export function useFile(
+  fileId: string | undefined,
+  options?: Omit<UseQueryOptions<FileData, Error>, 'queryKey' | 'queryFn'>
+) {
+  return useQuery<FileData, Error>({
+    queryKey: fileId ? fileKeys.detail(fileId) : [],
+    queryFn: () => {
+      if (!fileId) {
+        throw new Error('File ID is required')
+      }
+      return getFile(fileId)
+    },
+    enabled: !!fileId,
+    staleTime: 30000, // 30 seconds
+    ...options,
+  })
+}
+
+/**
+ * Hook to update file metadata
+ */
+export function useUpdateFile() {
+  const queryClient = useQueryClient()
+  const { toast } = useToast()
+
+  return useMutation<
+    FileData,
+    Error,
+    { fileId: string; data: UpdateFileRequest }
+  >({
+    mutationFn: ({ fileId, data }) => updateFile(fileId, data),
+    onSuccess: (updatedFile) => {
+      // Invalidate and refetch file list
+      queryClient.invalidateQueries({
+        queryKey: fileKeys.list(updatedFile.courseId),
+      })
+
+      // Update the file detail cache
+      queryClient.setQueryData(fileKeys.detail(updatedFile.id), updatedFile)
+
+      toast({
+        title: 'File updated',
+        description: 'File has been updated successfully.',
+      })
+    },
+    onError: (error) => {
+      toast({
+        variant: 'destructive',
+        title: 'Update failed',
+        description:
+          error.message || 'Failed to update file. Please try again.',
+      })
     },
   })
+}
+
+/**
+ * Hook to delete a file
+ */
+export function useDeleteFile() {
+  const queryClient = useQueryClient()
+  const { toast } = useToast()
+
+  return useMutation<void, Error, { fileId: string; courseId: string }>({
+    mutationFn: ({ fileId }) => deleteFile(fileId),
+    onSuccess: (_, { courseId }) => {
+      // Invalidate and refetch file list
+      queryClient.invalidateQueries({
+        queryKey: fileKeys.list(courseId),
+      })
+
+      toast({
+        title: 'File deleted',
+        description: 'File has been deleted successfully.',
+      })
+    },
+    onError: (error) => {
+      toast({
+        variant: 'destructive',
+        title: 'Delete failed',
+        description:
+          error.message || 'Failed to delete file. Please try again.',
+      })
+    },
+  })
+}
+
+/**
+ * Hook to get download URL for a file
+ */
+export function useDownloadUrl() {
+  const { toast } = useToast()
+
+  return useMutation<string, Error, string>({
+    mutationFn: (fileId: string) => getDownloadUrl(fileId),
+    onError: (error) => {
+      toast({
+        variant: 'destructive',
+        title: 'Download failed',
+        description:
+          error.message || 'Failed to get download URL. Please try again.',
+      })
+    },
+  })
+}
+
+/**
+ * Helper function to download a file
+ */
+export async function downloadFileFromUrl(url: string, fileName: string) {
+  try {
+    const response = await fetch(url)
+    if (!response.ok) {
+      throw new Error('Download failed')
+    }
+
+    const blob = await response.blob()
+    const downloadUrl = window.URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = downloadUrl
+    link.download = fileName
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    window.URL.revokeObjectURL(downloadUrl)
+  } catch {
+    throw new Error('Failed to download file')
+  }
 }

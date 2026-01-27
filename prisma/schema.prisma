@@ -1,5 +1,8 @@
+// =============================================================================
 // Luma Web - Prisma Schema
-// 对应 TECH_DESIGN.md v1.0
+// Version: 1.0 MVP
+// Database: PostgreSQL (via Supabase)
+// =============================================================================
 
 generator client {
   provider = "prisma-client-js"
@@ -8,323 +11,561 @@ generator client {
 datasource db {
   provider  = "postgresql"
   url       = env("DATABASE_URL")
-  directUrl = env("DIRECT_URL") // 用于 Supabase 连接池
+  directUrl = env("DIRECT_URL")
 }
 
-// ============================================
-// 枚举类型
-// ============================================
+// =============================================================================
+// ENUMS
+// =============================================================================
 
-enum Role {
-  student
-  admin
+// User Authentication
+enum UserRole {
+  STUDENT
+  ADMIN
 }
 
-enum AdminRole {
-  super_admin
-  admin
+enum TokenType {
+  EMAIL_VERIFY
+  PASSWORD_RESET
+}
+
+// File Management
+enum FileStatus {
+  UPLOADING
+  PROCESSING
+  READY
+  FAILED
 }
 
 enum FileType {
-  lecture
+  LECTURE
+  HOMEWORK
+  EXAM
+  OTHER
 }
 
-enum FileStatus {
-  uploading
-  processing
-  ready
-  failed
+enum StructureStatus {
+  PENDING
+  PROCESSING
+  READY
+  FAILED
 }
 
+// AI Interactive Tutor - Knowledge Structure
+enum TopicType {
+  CORE
+  SUPPORTING
+}
+
+enum QuestionType {
+  MULTIPLE_CHOICE
+  SHORT_ANSWER
+}
+
+// AI Interactive Tutor - Learning Sessions
+enum SessionStatus {
+  IN_PROGRESS
+  COMPLETED
+  PAUSED
+}
+
+enum LearningPhase {
+  EXPLAINING
+  CONFIRMING
+  TESTING
+}
+
+enum ProgressStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  SKIPPED
+}
+
+// Quota Management
 enum QuotaBucket {
-  learningInteractions
-  autoExplain
+  LEARNING_INTERACTIONS
+  AUTO_EXPLAIN
 }
 
 enum QuotaChangeReason {
-  consume
-  refund
-  system_reset
-  admin_adjust
+  SYSTEM_RESET
+  ADMIN_ADJUST
+  CONSUME
+  REFUND
+}
+
+// Admin System
+enum AdminRole {
+  SUPER_ADMIN
+  ADMIN
 }
 
 enum AccessActionType {
-  login
-  view_file
-  use_qa
-  use_explain
+  LOGIN
+  VIEW_FILE
+  USE_QA
+  USE_EXPLAIN
 }
 
 enum AIActionType {
-  qa
-  explain
+  QA
+  EXPLAIN
+  STRUCTURE_EXTRACT
+  TEST_GENERATE
 }
 
-enum Locale {
-  en
-  zh
+// =============================================================================
+// USER AUTHENTICATION
+// =============================================================================
+
+model User {
+  id                  String    @id @default(cuid())
+  email               String    @unique
+  passwordHash        String    @map("password_hash")
+  role                UserRole  @default(STUDENT)
+  createdAt           DateTime  @default(now()) @map("created_at")
+  updatedAt           DateTime  @updatedAt @map("updated_at")
+  emailConfirmedAt    DateTime? @map("email_confirmed_at")
+  lastLoginAt         DateTime? @map("last_login_at")
+  failedLoginAttempts Int       @default(0) @map("failed_login_attempts")
+  lockedUntil         DateTime? @map("locked_until")
+
+  // Relations
+  courses            Course[]
+  verificationTokens VerificationToken[]
+  quotas             Quota[]
+  quotaLogs          QuotaLog[]
+  aiUsageLogs        AIUsageLog[]
+  mathpixUsages      MathpixUsage[]
+  learningSessions   LearningSession[]
+  readingProgress    ReadingProgress[]
+  preference         UserPreference?
+  accessLogs         AccessLog[]
+
+  @@index([email])
+  @@index([createdAt])
+  @@map("users")
 }
 
-// ============================================
-// 用户相关
-// ============================================
+model VerificationToken {
+  id        String    @id @default(cuid())
+  userId    String    @map("user_id")
+  token     String    @unique
+  type      TokenType
+  expiresAt DateTime  @map("expires_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+  usedAt    DateTime? @map("used_at")
 
-/// 用户扩展信息（关联 Supabase auth.users）
-model Profile {
-  userId    String   @id @map("user_id") @db.Uuid
-  role      Role     @default(student)
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  // 关系
-  courses         Course[]
-  files           File[]
-  quotas          Quota[]
-  quotaLogs       QuotaLog[]
-  readingProgress ReadingProgress[]
-  preference      UserPreference?
-  accessLogs      AccessLog[]
-  aiUsageLogs     AIUsageLog[]
-  qas             QA[]
-
-  @@map("profiles")
+  @@index([userId])
+  @@index([token])
+  @@index([expiresAt])
+  @@map("verification_tokens")
 }
 
-/// 用户偏好设置
-model UserPreference {
-  userId        String   @id @map("user_id") @db.Uuid
-  uiLocale      Locale   @default(en) @map("ui_locale")
-  explainLocale Locale   @default(en) @map("explain_locale")
-  updatedAt     DateTime @updatedAt @map("updated_at")
+// =============================================================================
+// COURSE MANAGEMENT
+// =============================================================================
 
-  // 关系
-  profile Profile @relation(fields: [userId], references: [userId], onDelete: Cascade)
-
-  @@map("user_preferences")
-}
-
-// ============================================
-// 课程与文件
-// ============================================
-
-/// 课程
 model Course {
-  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  userId    String   @map("user_id") @db.Uuid
+  id        String   @id @default(cuid())
+  userId    String   @map("user_id")
   name      String   @db.VarChar(50)
   school    String?  @db.VarChar(100)
   term      String?  @db.VarChar(50)
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  // 关系
-  profile Profile @relation(fields: [userId], references: [userId], onDelete: Cascade)
-  files   File[]
+  user  User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  files File[]
 
-  @@unique([userId, name])
+  @@index([userId])
+  @@index([userId, createdAt(sort: Desc)])
   @@map("courses")
 }
 
-/// 文件（PDF）
-model File {
-  id          String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  courseId    String     @map("course_id") @db.Uuid
-  userId      String     @map("user_id") @db.Uuid // 冗余字段便于查询
-  name        String     @db.VarChar(255)
-  type        FileType   @default(lecture)
-  pageCount   Int?       @map("page_count")
-  fileSize    BigInt?    @map("file_size") // 字节
-  isScanned   Boolean    @default(false) @map("is_scanned")
-  status      FileStatus @default(uploading)
-  storagePath String?    @map("storage_path") @db.VarChar(500)
-  createdAt   DateTime   @default(now()) @map("created_at")
-  updatedAt   DateTime   @updatedAt @map("updated_at")
+// =============================================================================
+// FILE MANAGEMENT
+// =============================================================================
 
-  // 关系
-  course          Course            @relation(fields: [courseId], references: [id], onDelete: Cascade)
-  profile         Profile           @relation(fields: [userId], references: [userId], onDelete: Cascade)
-  explanations    Explanation[]
-  imageRegions    ImageRegion[]
-  qas             QA[]
-  readingProgress ReadingProgress[]
+model File {
+  id              String          @id @default(cuid())
+  courseId        String          @map("course_id")
+  name            String          @db.VarChar(255)
+  type            FileType        @default(LECTURE)
+  pageCount       Int?            @map("page_count")
+  fileSize        BigInt          @map("file_size")
+  isScanned       Boolean         @default(false) @map("is_scanned")
+  status          FileStatus      @default(UPLOADING)
+  storagePath     String          @map("storage_path")
+  createdAt       DateTime        @default(now()) @map("created_at")
+  updatedAt       DateTime        @updatedAt @map("updated_at")
+
+  // AI Interactive Tutor fields
+  structureStatus StructureStatus @default(PENDING) @map("structure_status")
+  structureError  String?         @map("structure_error")
+  extractedAt     DateTime?       @map("extracted_at")
+
+  course           Course            @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  topicGroups      TopicGroup[]
+  extractedImages  ExtractedImage[]
+  learningSessions LearningSession[]
+  mathpixUsages    MathpixUsage[]
+  explanations     Explanation[]
+  imageRegions     ImageRegion[]
+  qas              QA[]
+  readingProgress  ReadingProgress[]
 
   @@unique([courseId, name])
-  @@index([userId])
+  @@index([courseId])
+  @@index([courseId, createdAt(sort: Desc)])
+  @@index([status])
+  @@index([structureStatus])
   @@map("files")
 }
 
-// ============================================
-// AI 生成内容
-// ============================================
+// =============================================================================
+// AI INTERACTIVE TUTOR - KNOWLEDGE STRUCTURE
+// =============================================================================
 
-/// 页面讲解
-model Explanation {
-  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  fileId     String   @map("file_id") @db.Uuid
-  pageNumber Int      @map("page_number")
-  content    String   @db.Text
-  createdAt  DateTime @default(now()) @map("created_at")
+model TopicGroup {
+  id        String    @id @default(cuid())
+  fileId    String    @map("file_id")
+  index     Int
+  title     String    @db.VarChar(500)
+  type      TopicType
+  pageStart Int?      @map("page_start")
+  pageEnd   Int?      @map("page_end")
+  createdAt DateTime  @default(now()) @map("created_at")
 
-  // 关系
+  file          File            @relation(fields: [fileId], references: [id], onDelete: Cascade)
+  subTopics     SubTopic[]
+  tests         TopicTest[]
+  topicProgress TopicProgress[]
+
+  @@unique([fileId, index])
+  @@index([fileId])
+  @@map("topic_groups")
+}
+
+model SubTopic {
+  id           String   @id @default(cuid())
+  topicGroupId String   @map("topic_group_id")
+  index        Int
+  title        String   @db.VarChar(500)
+  metadata     Json
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  topicGroup       TopicGroup         @relation(fields: [topicGroupId], references: [id], onDelete: Cascade)
+  subTopicProgress SubTopicProgress[]
+
+  @@unique([topicGroupId, index])
+  @@index([topicGroupId])
+  @@map("sub_topics")
+}
+
+model TopicTest {
+  id            String       @id @default(cuid())
+  topicGroupId  String       @map("topic_group_id")
+  index         Int
+  type          QuestionType
+  question      String       @db.Text
+  options       Json?
+  correctAnswer String       @map("correct_answer") @db.Text
+  explanation   String       @db.Text
+  createdAt     DateTime     @default(now()) @map("created_at")
+
+  topicGroup TopicGroup @relation(fields: [topicGroupId], references: [id], onDelete: Cascade)
+
+  @@unique([topicGroupId, index])
+  @@index([topicGroupId])
+  @@map("topic_tests")
+}
+
+model ExtractedImage {
+  id          String   @id @default(cuid())
+  fileId      String   @map("file_id")
+  pageNumber  Int      @map("page_number")
+  imageIndex  Int      @map("image_index")
+  storagePath String   @map("storage_path")
+  bbox        Json
+  createdAt   DateTime @default(now()) @map("created_at")
+
   file File @relation(fields: [fileId], references: [id], onDelete: Cascade)
 
-  @@unique([fileId, pageNumber])
+  @@unique([fileId, pageNumber, imageIndex])
+  @@index([fileId])
+  @@index([fileId, pageNumber])
+  @@map("extracted_images")
+}
+
+// =============================================================================
+// AI INTERACTIVE TUTOR - LEARNING SESSIONS
+// =============================================================================
+
+model LearningSession {
+  id                String        @id @default(cuid())
+  userId            String        @map("user_id")
+  fileId            String        @map("file_id")
+  status            SessionStatus @default(IN_PROGRESS)
+  currentTopicIndex Int           @default(0) @map("current_topic_index")
+  currentSubIndex   Int           @default(0) @map("current_sub_index")
+  currentPhase      LearningPhase @default(EXPLAINING) @map("current_phase")
+  startedAt         DateTime      @default(now()) @map("started_at")
+  lastActiveAt      DateTime      @updatedAt @map("last_active_at")
+  completedAt       DateTime?     @map("completed_at")
+
+  user             User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  file             File               @relation(fields: [fileId], references: [id], onDelete: Cascade)
+  topicProgress    TopicProgress[]
+  subTopicProgress SubTopicProgress[]
+
+  @@unique([userId, fileId])
+  @@index([userId])
+  @@index([userId, status])
+  @@index([fileId])
+  @@map("learning_sessions")
+}
+
+model TopicProgress {
+  id               String         @id @default(cuid())
+  sessionId        String         @map("session_id")
+  topicGroupId     String         @map("topic_group_id")
+  status           ProgressStatus @default(PENDING)
+  isWeakPoint      Boolean        @default(false) @map("is_weak_point")
+  totalAttempts    Int            @default(0) @map("total_attempts")
+  correctCount     Int            @default(0) @map("correct_count")
+  wrongCount       Int            @default(0) @map("wrong_count")
+  questionAttempts Json?          @map("question_attempts")
+  completedAt      DateTime?      @map("completed_at")
+
+  session    LearningSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  topicGroup TopicGroup      @relation(fields: [topicGroupId], references: [id], onDelete: Cascade)
+
+  @@unique([sessionId, topicGroupId])
+  @@index([sessionId])
+  @@index([sessionId, status])
+  @@map("topic_progress")
+}
+
+model SubTopicProgress {
+  id          String    @id @default(cuid())
+  sessionId   String    @map("session_id")
+  subTopicId  String    @map("sub_topic_id")
+  confirmed   Boolean   @default(false)
+  confirmedAt DateTime? @map("confirmed_at")
+
+  session  LearningSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  subTopic SubTopic        @relation(fields: [subTopicId], references: [id], onDelete: Cascade)
+
+  @@unique([sessionId, subTopicId])
+  @@index([sessionId])
+  @@map("sub_topic_progress")
+}
+
+// =============================================================================
+// LEGACY AI FEATURES (Explanation, ImageRegion, QA)
+// =============================================================================
+
+model Explanation {
+  id        String   @id @default(cuid())
+  fileId    String   @map("file_id")
+  pageNum   Int      @map("page_num")
+  content   String   @db.Text
+  createdAt DateTime @default(now()) @map("created_at")
+
+  file File @relation(fields: [fileId], references: [id], onDelete: Cascade)
+
+  @@index([fileId])
+  @@index([fileId, pageNum])
   @@map("explanations")
 }
 
-/// 图片区域
 model ImageRegion {
-  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  fileId      String   @map("file_id") @db.Uuid
-  pageNumber  Int      @map("page_number")
-  bbox        Json     // {x, y, width, height}
-  explanation String?  @db.Text
-  createdAt   DateTime @default(now()) @map("created_at")
+  id        String   @id @default(cuid())
+  fileId    String   @map("file_id")
+  pageNum   Int      @map("page_num")
+  bbox      Json
+  content   String   @db.Text
+  createdAt DateTime @default(now()) @map("created_at")
 
-  // 关系
   file File @relation(fields: [fileId], references: [id], onDelete: Cascade)
 
-  @@index([fileId, pageNumber])
+  @@index([fileId])
+  @@index([fileId, pageNum])
   @@map("image_regions")
 }
 
-/// 问答记录
 model QA {
-  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  fileId    String   @map("file_id") @db.Uuid
-  userId    String   @map("user_id") @db.Uuid // 冗余字段便于查询
+  id        String   @id @default(cuid())
+  fileId    String   @map("file_id")
   question  String   @db.Text
   answer    String   @db.Text
-  pageRefs  Json?    @map("page_refs") // [1, 3, 5]
+  pageNum   Int?     @map("page_num")
   createdAt DateTime @default(now()) @map("created_at")
 
-  // 关系
-  file    File    @relation(fields: [fileId], references: [id], onDelete: Cascade)
-  profile Profile @relation(fields: [userId], references: [userId], onDelete: Cascade)
+  file File @relation(fields: [fileId], references: [id], onDelete: Cascade)
 
-  @@index([userId])
+  @@index([fileId])
+  @@index([fileId, createdAt(sort: Desc)])
   @@map("qas")
 }
 
-/// 阅读进度
-model ReadingProgress {
-  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  userId     String   @map("user_id") @db.Uuid
-  fileId     String   @map("file_id") @db.Uuid
-  pageNumber Int      @map("page_number")
-  updatedAt  DateTime @updatedAt @map("updated_at")
+// =============================================================================
+// QUOTA MANAGEMENT
+// =============================================================================
 
-  // 关系
-  profile Profile @relation(fields: [userId], references: [userId], onDelete: Cascade)
-  file    File    @relation(fields: [fileId], references: [id], onDelete: Cascade)
-
-  @@unique([userId, fileId])
-  @@map("reading_progress")
-}
-
-// ============================================
-// 配额管理
-// ============================================
-
-/// 用户配额
 model Quota {
-  id      String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  userId  String      @map("user_id") @db.Uuid
+  id      String      @id @default(cuid())
+  userId  String      @map("user_id")
   bucket  QuotaBucket
   used    Int         @default(0)
-  limit   Int // 150 或 300
+  limit   Int
   resetAt DateTime    @map("reset_at")
 
-  // 关系
-  profile Profile @relation(fields: [userId], references: [userId], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, bucket])
+  @@index([userId])
+  @@index([resetAt])
+  @@index([resetAt, bucket]) // Compound index for efficient quota reset job queries
   @@map("quotas")
 }
 
-/// 配额变更日志
 model QuotaLog {
-  id        String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  userId    String            @map("user_id") @db.Uuid
+  id        String            @id @default(cuid())
+  userId    String            @map("user_id")
   bucket    QuotaBucket
-  change    Int // +1 消耗, -1 退还
+  change    Int
   reason    QuotaChangeReason
+  metadata  Json?
   createdAt DateTime          @default(now()) @map("created_at")
 
-  // 关系
-  profile Profile @relation(fields: [userId], references: [userId], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  @@index([userId])
+  @@index([userId, bucket])
   @@index([createdAt])
   @@map("quota_logs")
 }
 
-// ============================================
-// 管理员（独立账户体系）
-// ============================================
+// =============================================================================
+// AI USAGE TRACKING
+// =============================================================================
 
-/// 管理员账户
+model AIUsageLog {
+  id           String       @id @default(cuid())
+  userId       String       @map("user_id")
+  actionType   AIActionType @map("action_type")
+  inputTokens  Int          @map("input_tokens")
+  outputTokens Int          @map("output_tokens")
+  model        String       @db.VarChar(100)
+  metadata     Json?
+  createdAt    DateTime     @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([userId, actionType])
+  @@index([createdAt])
+  @@index([model])
+  @@map("ai_usage_logs")
+}
+
+model MathpixUsage {
+  id           String   @id @default(cuid())
+  userId       String   @map("user_id")
+  fileId       String   @map("file_id")
+  requestCount Int      @default(1) @map("request_count")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  file File @relation(fields: [fileId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([fileId])
+  @@index([createdAt])
+  @@map("mathpix_usages")
+}
+
+// =============================================================================
+// USER PREFERENCES
+// =============================================================================
+
+model UserPreference {
+  id            String   @id @default(cuid())
+  userId        String   @unique @map("user_id")
+  uiLocale      String   @default("en") @map("ui_locale") @db.VarChar(10)
+  explainLocale String   @default("en") @map("explain_locale") @db.VarChar(10)
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_preferences")
+}
+
+model ReadingProgress {
+  id          String   @id @default(cuid())
+  userId      String   @map("user_id")
+  fileId      String   @map("file_id")
+  currentPage Int      @default(1) @map("current_page")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  file File @relation(fields: [fileId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, fileId])
+  @@index([userId])
+  @@map("reading_progress")
+}
+
+// =============================================================================
+// ADMIN SYSTEM (Separate account system)
+// =============================================================================
+
 model Admin {
-  id           String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  email        String     @unique @db.VarChar(255)
-  passwordHash String     @map("password_hash") @db.VarChar(255)
-  role         AdminRole  @default(admin)
-  createdAt    DateTime   @default(now()) @map("created_at")
-  disabledAt   DateTime?  @map("disabled_at")
+  id           String    @id @default(cuid())
+  email        String    @unique
+  passwordHash String    @map("password_hash")
+  role         AdminRole @default(ADMIN)
+  createdAt    DateTime  @default(now()) @map("created_at")
+  disabledAt   DateTime? @map("disabled_at")
 
-  // 关系
   auditLogs AuditLog[]
 
+  @@index([email])
   @@map("admins")
 }
 
-/// 管理员操作审计日志
-model AuditLog {
-  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  adminId      String   @map("admin_id") @db.Uuid
-  action       String   @db.VarChar(50) // adjust_quota, disable_user 等
-  targetUserId String?  @map("target_user_id") @db.Uuid
-  details      Json?
-  createdAt    DateTime @default(now()) @map("created_at")
-
-  // 关系
-  admin Admin @relation(fields: [adminId], references: [id], onDelete: Cascade)
-
-  @@map("audit_logs")
-}
-
-// ============================================
-// 日志
-// ============================================
-
-/// 访问日志
 model AccessLog {
-  id         String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  userId     String?          @map("user_id") @db.Uuid
+  id         String           @id @default(cuid())
+  userId     String           @map("user_id")
   actionType AccessActionType @map("action_type")
   metadata   Json?
   timestamp  DateTime         @default(now())
 
-  // 关系
-  profile Profile? @relation(fields: [userId], references: [userId], onDelete: SetNull)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  @@index([userId])
+  @@index([actionType])
   @@index([timestamp])
   @@map("access_logs")
 }
 
-/// AI 使用日志
-model AIUsageLog {
-  id           String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  userId       String       @map("user_id") @db.Uuid
-  actionType   AIActionType @map("action_type")
-  inputTokens  Int          @map("input_tokens")
-  outputTokens Int          @map("output_tokens")
-  model        String       @db.VarChar(50)
-  costCents    Int          @map("cost_cents") // 成本（分）
-  createdAt    DateTime     @default(now()) @map("created_at")
+model AuditLog {
+  id           String   @id @default(cuid())
+  adminId      String   @map("admin_id")
+  action       String   @db.VarChar(100)
+  targetUserId String?  @map("target_user_id")
+  details      Json?
+  createdAt    DateTime @default(now()) @map("created_at")
 
-  // 关系
-  profile Profile @relation(fields: [userId], references: [userId], onDelete: Cascade)
+  admin Admin @relation(fields: [adminId], references: [id], onDelete: Cascade)
 
+  @@index([adminId])
+  @@index([targetUserId])
   @@index([createdAt])
-  @@map("ai_usage_logs")
+  @@map("audit_logs")
 }

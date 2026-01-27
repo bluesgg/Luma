@@ -1,181 +1,154 @@
-import type { ApiSuccessResponse, ApiErrorResponse } from '@/types'
-import { z } from 'zod'
+/**
+ * File Management API Client
+ */
 
-// ============================================
-// Validation Schemas
-// ============================================
-
-const uuidSchema = z.string().uuid('Invalid UUID format')
+import { apiClient } from './client'
 
 /**
- * Validate that a string is a valid UUID
- * @throws Error if the string is not a valid UUID
+ * File data types
  */
-function validateUUID(value: string, paramName: string): void {
-  const result = uuidSchema.safeParse(value)
-  if (!result.success) {
-    throw new Error(`Invalid ${paramName}: ${result.error.issues[0].message}`)
+export interface FileData {
+  id: string
+  courseId: string
+  name: string
+  type: 'LECTURE' | 'HOMEWORK' | 'EXAM' | 'OTHER'
+  pageCount: number | null
+  fileSize: string
+  isScanned: boolean
+  status: 'UPLOADING' | 'PROCESSING' | 'READY' | 'FAILED'
+  structureStatus: 'PENDING' | 'PROCESSING' | 'READY' | 'FAILED'
+  structureError: string | null
+  storagePath: string
+  createdAt: string
+  updatedAt: string
+  extractedAt: string | null
+  course?: {
+    id: string
+    name: string
   }
 }
 
-// ============================================
-// Types
-// ============================================
-
-export interface FileResponse {
-  id: string
+export interface UploadUrlRequest {
+  fileName: string
+  fileSize: number
+  fileType: string
   courseId: string
-  userId: string
-  name: string
-  type: string
-  pageCount: number | null
-  fileSize: number | null
-  isScanned: boolean
-  status: 'uploading' | 'processing' | 'ready' | 'failed'
-  storagePath: string | null
-  createdAt: string
-  updatedAt: string
-}
-
-export interface CourseInfo {
-  id: string
-  name: string
-}
-
-export interface FilesWithCourse {
-  files: FileResponse[]
-  course: CourseInfo
 }
 
 export interface UploadUrlResponse {
-  fileId: string
   uploadUrl: string
+  fileId: string
+  storagePath: string
   expiresAt: string
 }
 
-export interface ConfirmUploadOptions {
-  pageCount?: number
+export interface ConfirmUploadRequest {
+  fileId: string
 }
 
-// ============================================
-// Helper Functions
-// ============================================
-
-async function parseErrorResponse(response: Response): Promise<Error> {
-  try {
-    const error = (await response.json()) as ApiErrorResponse
-    return new Error(error.error.message)
-  } catch {
-    return new Error(`Request failed with status ${response.status}`)
-  }
+export interface ConfirmUploadResponse {
+  file: FileData
 }
 
-// ============================================
-// API Functions
-// ============================================
+export interface UpdateFileRequest {
+  name?: string
+  type?: 'LECTURE' | 'HOMEWORK' | 'EXAM' | 'OTHER'
+}
+
+export interface DownloadUrlResponse {
+  downloadUrl: string
+  expiresAt: string
+}
 
 /**
- * Fetch all files for a course
+ * Get all files for a course
  */
-export async function fetchCourseFiles(courseId: string): Promise<FilesWithCourse> {
-  validateUUID(courseId, 'courseId')
+export async function getFiles(courseId: string): Promise<FileData[]> {
+  const response = await apiClient.get<{ files: FileData[] }>(
+    `/api/courses/${courseId}/files`
+  )
+  return response.files
+}
 
-  const response = await fetch(`/api/courses/${encodeURIComponent(courseId)}/files`, {
-    credentials: 'include',
-  })
-
-  if (!response.ok) {
-    throw await parseErrorResponse(response)
-  }
-
-  const data = (await response.json()) as ApiSuccessResponse<FilesWithCourse>
-  return data.data
+/**
+ * Get a single file by ID
+ */
+export async function getFile(fileId: string): Promise<FileData> {
+  const response = await apiClient.get<{ file: FileData }>(
+    `/api/files/${fileId}`
+  )
+  return response.file
 }
 
 /**
  * Request a presigned upload URL for a new file
  */
 export async function requestUploadUrl(
-  courseId: string,
-  fileName: string,
-  fileSize: number,
-  csrfHeaders: Record<string, string>
+  data: UploadUrlRequest
 ): Promise<UploadUrlResponse> {
-  validateUUID(courseId, 'courseId')
-
-  const response = await fetch(`/api/courses/${encodeURIComponent(courseId)}/files/upload`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      ...csrfHeaders,
-    },
-    credentials: 'include',
-    body: JSON.stringify({
-      fileName,
-      fileSize,
-    }),
-  })
-
-  if (!response.ok) {
-    throw await parseErrorResponse(response)
-  }
-
-  const data = (await response.json()) as ApiSuccessResponse<UploadUrlResponse>
-  return data.data
+  return await apiClient.post<UploadUrlResponse>('/api/files/upload-url', data)
 }
 
 /**
- * Confirm that a file upload is complete
+ * Upload file to Supabase Storage using presigned URL
  */
-export async function confirmUpload(
-  courseId: string,
-  fileId: string,
-  csrfHeaders: Record<string, string>,
-  options?: ConfirmUploadOptions
-): Promise<FileResponse> {
-  validateUUID(courseId, 'courseId')
-  validateUUID(fileId, 'fileId')
-
-  const body = options ? JSON.stringify(options) : undefined
-
-  const response = await fetch(`/api/courses/${encodeURIComponent(courseId)}/files/${encodeURIComponent(fileId)}/confirm`, {
-    method: 'POST',
+export async function uploadToStorage(
+  uploadUrl: string,
+  file: File
+): Promise<void> {
+  const response = await fetch(uploadUrl, {
+    method: 'PUT',
+    body: file,
     headers: {
-      'Content-Type': 'application/json',
-      ...csrfHeaders,
+      'Content-Type': file.type,
     },
-    credentials: 'include',
-    body,
   })
 
   if (!response.ok) {
-    throw await parseErrorResponse(response)
+    throw new Error(`Upload failed: ${response.statusText}`)
   }
+}
 
-  const data = (await response.json()) as ApiSuccessResponse<{ file: FileResponse }>
-  return data.data.file
+/**
+ * Confirm file upload completion
+ */
+export async function confirmUpload(
+  data: ConfirmUploadRequest
+): Promise<FileData> {
+  const response = await apiClient.post<ConfirmUploadResponse>(
+    '/api/files/confirm',
+    data
+  )
+  return response.file
+}
+
+/**
+ * Update file metadata
+ */
+export async function updateFile(
+  fileId: string,
+  data: UpdateFileRequest
+): Promise<FileData> {
+  const response = await apiClient.patch<{ file: FileData }>(
+    `/api/files/${fileId}`,
+    data
+  )
+  return response.file
 }
 
 /**
  * Delete a file
  */
-export async function deleteFile(
-  courseId: string,
-  fileId: string,
-  csrfHeaders: Record<string, string>
-): Promise<void> {
-  validateUUID(courseId, 'courseId')
-  validateUUID(fileId, 'fileId')
+export async function deleteFile(fileId: string): Promise<void> {
+  await apiClient.delete(`/api/files/${fileId}`)
+}
 
-  const response = await fetch(`/api/courses/${encodeURIComponent(courseId)}/files/${encodeURIComponent(fileId)}`, {
-    method: 'DELETE',
-    headers: {
-      ...csrfHeaders,
-    },
-    credentials: 'include',
-  })
-
-  if (!response.ok) {
-    throw await parseErrorResponse(response)
-  }
+/**
+ * Get presigned download URL for a file
+ */
+export async function getDownloadUrl(fileId: string): Promise<string> {
+  const response = await apiClient.get<DownloadUrlResponse>(
+    `/api/files/${fileId}/download-url`
+  )
+  return response.downloadUrl
 }

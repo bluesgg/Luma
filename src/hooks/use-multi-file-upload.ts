@@ -1,141 +1,170 @@
 /**
- * Multi-file upload hook with concurrent upload management
+ * FILE-014: React Hook for Multi-File Upload
  *
- * Features:
- * - Validates files (PDF only, max 200MB)
- * - Manages upload queue with max 3 concurrent uploads
- * - Automatic retry (max 3 attempts)
- * - Progress tracking
- * - Cancel/retry/remove functionality
+ * This hook provides functionality for:
+ * - Uploading multiple files concurrently
+ * - Tracking upload progress for each file
+ * - Managing upload queue with concurrency control
+ * - Canceling and retrying failed uploads
+ * - Validating files before upload
  */
 
-import { useState, useCallback, useRef, useEffect, useMemo } from 'react'
-import { STORAGE } from '@/lib/constants'
-import { sanitizeFileName } from '@/lib/sanitize'
+import { useState, useCallback, useRef, useEffect } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
+import {
+  requestUploadUrl,
+  uploadToStorage,
+  confirmUpload,
+  type FileData,
+} from '@/lib/api/files'
+import { FILE_LIMITS } from '@/lib/constants'
+import { fileKeys } from './use-files'
+import { useToast } from './use-toast'
 
-export type UploadStatus = 'pending' | 'uploading' | 'processing' | 'completed' | 'failed'
+/**
+ * Upload status for individual files
+ */
+export type UploadStatus = 'pending' | 'uploading' | 'success' | 'error'
 
+/**
+ * Upload item representing a single file in the queue
+ */
 export interface UploadItem {
   id: string
   file: File
-  status: UploadStatus
   progress: number
-  retries: number
+  status: UploadStatus
   error?: string
-  fileId?: string // Database file ID after upload
+  fileId?: string
+  fileData?: FileData
 }
-
-export interface UploadStats {
-  total: number
-  pending: number
-  uploading: number
-  processing: number
-  completed: number
-  failed: number
-}
-
-const MAX_CONCURRENT_UPLOADS = 3
-const MAX_RETRY_ATTEMPTS = 3
 
 /**
- * Hook for managing multi-file uploads with queue management
+ * Validation error
  */
-export function useMultiFileUpload(
-  courseId: string,
-  csrfToken: string,
-  currentFileCount = 0
-) {
-  const [queue, setQueue] = useState<UploadItem[]>([])
-  const abortControllers = useRef<Map<string, AbortController>>(new Map())
+export interface ValidationError {
+  file: File
+  error: string
+}
 
-  // Calculate stats (MEDIUM-1: Wrapped in useMemo for efficiency)
-  const stats: UploadStats = useMemo(() => ({
-    total: queue.length,
-    pending: queue.filter((item) => item.status === 'pending').length,
-    uploading: queue.filter((item) => item.status === 'uploading').length,
-    processing: queue.filter((item) => item.status === 'processing').length,
-    completed: queue.filter((item) => item.status === 'completed').length,
-    failed: queue.filter((item) => item.status === 'failed').length,
-  }), [queue])
+/**
+ * Options for the multi-file upload hook
+ */
+export interface UseMultiFileUploadOptions {
+  courseId: string
+  maxConcurrent?: number
+  onUploadComplete?: (fileData: FileData) => void
+  onAllComplete?: () => void
+}
+
+/**
+ * Validate a single file before upload
+ */
+function validateFile(file: File): string | null {
+  // Check file type
+  if (file.type !== 'application/pdf') {
+    return 'Only PDF files are allowed'
+  }
+
+  // Check file size
+  if (file.size > FILE_LIMITS.MAX_FILE_SIZE) {
+    const maxSizeMB = FILE_LIMITS.MAX_FILE_SIZE / 1024 / 1024
+    return `File size exceeds maximum allowed size of ${maxSizeMB}MB`
+  }
+
+  // Check file name length
+  if (file.name.length > 255) {
+    return 'File name is too long (maximum 255 characters)'
+  }
+
+  return null
+}
+
+/**
+ * Hook for multi-file upload with concurrent upload support
+ * Includes cleanup on unmount to prevent memory leaks
+ */
+export function useMultiFileUpload(options: UseMultiFileUploadOptions) {
+  const { courseId, maxConcurrent = FILE_LIMITS.MAX_CONCURRENT_UPLOADS } =
+    options
+  const queryClient = useQueryClient()
+  const { toast } = useToast()
+
+  const [uploadItems, setUploadItems] = useState<UploadItem[]>([])
+  const [isUploading, setIsUploading] = useState(false)
+  const uploadQueueRef = useRef<string[]>([])
+  const activeUploadsRef = useRef<Set<string>>(new Set())
+  const abortControllersRef = useRef<Map<string, AbortController>>(new Map())
+
+  // Cleanup on unmount to prevent memory leaks
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    return () => {
+      // Abort all active uploads
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+      const abortControllers = abortControllersRef.current
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+      const activeUploads = activeUploadsRef.current
+
+      abortControllers.forEach((controller) => {
+        controller.abort()
+      })
+
+      // Clear all refs
+      abortControllers.clear()
+      activeUploads.clear()
+      uploadQueueRef.current = []
+    }
+  }, [])
 
   /**
-   * Validate a file before adding to queue
+   * Generate a unique ID for an upload item
    */
-  const validateFile = useCallback(
-    (file: File): { valid: boolean; error?: string; sanitizedName?: string } => {
-      // MAJOR-3: Sanitize file name
-      const sanitizedName = sanitizeFileName(file.name)
-
-      // Check file type
-      const isPdf =
-        file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf')
-      if (!isPdf) {
-        return { valid: false, error: 'Only PDF files are allowed' }
-      }
-
-      // Check file size
-      if (file.size > STORAGE.MAX_FILE_SIZE) {
-        return {
-          valid: false,
-          error: 'File size exceeds the 200 MB limit',
-        }
-      }
-
-      // MEDIUM-4: Check course file limit including pending queue items
-      const pendingUploads = queue.filter(
-        (item) => item.status === 'pending' || item.status === 'uploading'
-      ).length
-      const totalFiles = currentFileCount + pendingUploads
-
-      if (totalFiles >= STORAGE.MAX_FILES_PER_COURSE) {
-        return {
-          valid: false,
-          error: `Cannot exceed maximum of ${STORAGE.MAX_FILES_PER_COURSE} files per course`,
-        }
-      }
-
-      return { valid: true, sanitizedName }
-    },
-    [currentFileCount, queue]
-  )
+  const generateId = () =>
+    `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
 
   /**
-   * Add files to upload queue
+   * Add files to the upload queue
    */
   const addFiles = useCallback(
     (files: File[]) => {
-      const newItems: UploadItem[] = files.map((file) => {
-        const validation = validateFile(file)
-        const id = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+      const validationErrors: ValidationError[] = []
+      const newItems: UploadItem[] = []
 
-        if (!validation.valid) {
-          return {
-            id,
+      files.forEach((file) => {
+        const error = validateFile(file)
+        if (error) {
+          validationErrors.push({ file, error })
+        } else {
+          newItems.push({
+            id: generateId(),
             file,
-            status: 'failed' as const,
             progress: 0,
-            retries: 0,
-            error: validation.error,
-          }
-        }
-
-        // Use sanitized file name if available
-        const fileToUse = validation.sanitizedName && validation.sanitizedName !== file.name
-          ? new File([file], validation.sanitizedName, { type: file.type })
-          : file
-
-        return {
-          id,
-          file: fileToUse,
-          status: 'pending' as const,
-          progress: 0,
-          retries: 0,
+            status: 'pending',
+          })
         }
       })
 
-      setQueue((prev) => [...prev, ...newItems])
+      // Show validation errors
+      if (validationErrors.length > 0) {
+        validationErrors.forEach(({ file, error }) => {
+          toast({
+            variant: 'destructive',
+            title: `Invalid file: ${file.name}`,
+            description: error,
+          })
+        })
+      }
+
+      // Add valid files to the queue
+      if (newItems.length > 0) {
+        setUploadItems((prev) => [...prev, ...newItems])
+        uploadQueueRef.current.push(...newItems.map((item) => item.id))
+      }
+
+      return newItems.map((item) => item.id)
     },
-    [validateFile]
+    [toast]
   )
 
   /**
@@ -143,264 +172,230 @@ export function useMultiFileUpload(
    */
   const uploadFile = useCallback(
     async (item: UploadItem) => {
-      const controller = new AbortController()
-      abortControllers.current.set(item.id, controller)
+      const abortController = new AbortController()
+      abortControllersRef.current.set(item.id, abortController)
 
       try {
         // Update status to uploading
-        setQueue((prev) =>
-          prev.map((i) => (i.id === item.id ? { ...i, status: 'uploading' as const } : i))
+        setUploadItems((prev) =>
+          prev.map((i) =>
+            i.id === item.id ? { ...i, status: 'uploading', progress: 0 } : i
+          )
         )
 
-        // Step 1: Get signed upload URL
-        const uploadUrlResponse = await fetch('/api/files/upload-url', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'X-CSRF-Token': csrfToken, // CRITICAL-2: Fixed header casing
-          },
-          body: JSON.stringify({
-            courseId,
-            fileName: item.file.name,
-            fileSize: item.file.size,
-          }),
-          signal: controller.signal,
+        // Step 1: Request upload URL
+        const uploadUrlData = await requestUploadUrl({
+          fileName: item.file.name,
+          fileSize: item.file.size,
+          fileType: item.file.type,
+          courseId,
         })
 
-        if (!uploadUrlResponse.ok) {
-          const errorData = await uploadUrlResponse.json()
-          throw new Error(errorData.error?.message || 'Failed to get upload URL')
-        }
-
-        const uploadUrlData = await uploadUrlResponse.json()
-        const { fileId, uploadUrl, token } = uploadUrlData.data
-
-        // Step 2: Upload to R2
-        await new Promise<void>((resolve, reject) => {
-          const xhr = new XMLHttpRequest()
-
-          xhr.upload.addEventListener('progress', (e) => {
-            if (e.lengthComputable) {
-              const progress = Math.round((e.loaded / e.total) * 100)
-              setQueue((prev) =>
-                prev.map((i) => (i.id === item.id ? { ...i, progress } : i))
-              )
-            }
-          })
-
-          xhr.addEventListener('load', () => {
-            if (xhr.status >= 200 && xhr.status < 300) {
-              resolve()
-            } else {
-              reject(new Error(`Upload failed with status ${xhr.status}`))
-            }
-          })
-
-          xhr.addEventListener('error', () => {
-            reject(new Error('Upload failed'))
-          })
-
-          xhr.addEventListener('abort', () => {
-            reject(new Error('Upload cancelled'))
-          })
-
-          // MEDIUM-2: Add abort listener before sending
-          controller.signal.addEventListener('abort', () => {
-            xhr.abort()
-          })
-
-          xhr.open('PUT', uploadUrl)
-          xhr.setRequestHeader('X-Custom-Auth-Key', token)
-          xhr.send(item.file)
-        })
-
-        // Step 3: Confirm upload and trigger processing
-        const confirmResponse = await fetch('/api/files/confirm', { // CRITICAL-1: Fixed endpoint
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'X-CSRF-Token': csrfToken, // CRITICAL-2: Fixed header casing
-          },
-          body: JSON.stringify({ fileId }),
-          signal: controller.signal,
-        })
-
-        if (!confirmResponse.ok) {
-          throw new Error('Failed to confirm upload')
-        }
-
-        const confirmData = await confirmResponse.json()
-
-        // MAJOR-2: Use actual API response status instead of hardcoded delay
-        // Default to 'completed' if no status provided (for immediate completion)
-        // Use 'processing' if explicitly set (for async processing workflows)
-        const finalStatus = confirmData.data?.status === 'processing' ? 'processing' : 'completed'
-
-        setQueue((prev) =>
+        // Update progress: 10%
+        setUploadItems((prev) =>
           prev.map((i) =>
             i.id === item.id
-              ? { ...i, status: finalStatus, progress: 100, fileId }
+              ? { ...i, progress: 10, fileId: uploadUrlData.fileId }
               : i
           )
         )
-      } catch (error: any) {
+
+        // Step 2: Upload file to storage
+        await uploadToStorage(uploadUrlData.uploadUrl, item.file)
+
+        // Update progress: 80%
+        setUploadItems((prev) =>
+          prev.map((i) => (i.id === item.id ? { ...i, progress: 80 } : i))
+        )
+
+        // Step 3: Confirm upload
+        const fileData = await confirmUpload({
+          fileId: uploadUrlData.fileId,
+        })
+
+        // Update status to success
+        setUploadItems((prev) =>
+          prev.map((i) =>
+            i.id === item.id
+              ? { ...i, status: 'success', progress: 100, fileData }
+              : i
+          )
+        )
+
+        // Call completion callback
+        options.onUploadComplete?.(fileData)
+
+        return fileData
+      } catch (error) {
         const errorMessage =
-          error.name === 'AbortError'
-            ? 'Upload cancelled'
-            : error.message || 'Upload failed'
+          error instanceof Error ? error.message : 'Upload failed'
 
-        // MEDIUM-3: Add error logging
-        console.error(`Upload failed for ${item.file.name}:`, error)
-
-        setQueue((prev) =>
+        setUploadItems((prev) =>
           prev.map((i) =>
             i.id === item.id
-              ? {
-                  ...i,
-                  status: 'failed' as const,
-                  error: errorMessage,
-                  retries: i.retries + 1,
-                }
+              ? { ...i, status: 'error', error: errorMessage }
               : i
           )
         )
 
-        // Auto-retry if under limit
-        if (item.retries < MAX_RETRY_ATTEMPTS && error.name !== 'AbortError') {
-          setTimeout(() => {
-            // MAJOR-1: Update state to 'pending' before triggering retry to avoid race condition
-            setQueue((prev) => {
-              const failedItem = prev.find((i) => i.id === item.id)
-              if (failedItem && failedItem.retries < MAX_RETRY_ATTEMPTS) {
-                // Update to pending status first
-                const updatedQueue = prev.map((i) =>
-                  i.id === item.id
-                    ? { ...i, status: 'pending' as const, error: undefined }
-                    : i
-                )
-                // Trigger upload in next tick
-                setTimeout(() => {
-                  const itemToRetry = updatedQueue.find((i) => i.id === item.id)
-                  if (itemToRetry) {
-                    uploadFile(itemToRetry)
-                  }
-                }, 0)
-                return updatedQueue
-              }
-              return prev
-            })
-          }, 1000 * Math.pow(2, item.retries)) // Exponential backoff
-        }
+        toast({
+          variant: 'destructive',
+          title: `Upload failed: ${item.file.name}`,
+          description: errorMessage,
+        })
+
+        throw error
       } finally {
-        abortControllers.current.delete(item.id)
+        abortControllersRef.current.delete(item.id)
+        activeUploadsRef.current.delete(item.id)
       }
     },
-    [courseId, csrfToken]
+    [courseId, toast, options]
   )
 
   /**
-   * Process upload queue with concurrency limit
+   * Process the upload queue
    */
-  useEffect(() => {
-    const uploadingCount = queue.filter((item) => item.status === 'uploading').length
-    const pendingItems = queue.filter((item) => item.status === 'pending')
-
-    // Start new uploads up to concurrent limit
-    const slotsAvailable = MAX_CONCURRENT_UPLOADS - uploadingCount
-    if (slotsAvailable > 0 && pendingItems.length > 0) {
-      const itemsToStart = pendingItems.slice(0, slotsAvailable)
-
-      // Use setTimeout to ensure state is visible before upload starts
-      const timeoutId = setTimeout(() => {
-        itemsToStart.forEach((item) => {
-          uploadFile(item)
-        })
-      }, 0)
-
-      return () => clearTimeout(timeoutId)
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [queue])
-
-  /**
-   * CRITICAL-3: Cleanup AbortControllers on unmount to prevent memory leak
-   */
-  useEffect(() => {
-    return () => {
-      // Abort all active uploads
-      abortControllers.current.forEach((controller) => controller.abort())
-      abortControllers.current.clear()
-    }
-  }, [])
-
-  /**
-   * Cancel an upload
-   */
-  const cancel = useCallback((itemId: string) => {
-    const controller = abortControllers.current.get(itemId)
-    if (controller) {
-      controller.abort()
-    }
-
-    setQueue((prev) => {
-      const item = prev.find((i) => i.id === itemId)
-      if (item?.status === 'pending') {
-        // Remove pending items
-        return prev.filter((i) => i.id !== itemId)
+  const processQueue = useCallback(async () => {
+    while (uploadQueueRef.current.length > 0) {
+      // Wait if we've reached max concurrent uploads
+      while (activeUploadsRef.current.size >= maxConcurrent) {
+        await new Promise((resolve) => setTimeout(resolve, 100))
       }
-      // Mark uploading items as failed
-      return prev.map((i) =>
-        i.id === itemId
-          ? { ...i, status: 'failed' as const, error: 'Upload cancelled' }
-          : i
-      )
-    })
+
+      const itemId = uploadQueueRef.current.shift()
+      if (!itemId) break
+
+      const item = uploadItems.find((i) => i.id === itemId)
+      if (!item) continue
+
+      activeUploadsRef.current.add(itemId)
+
+      // Upload file without blocking
+      uploadFile(item).finally(() => {
+        // Check if all uploads are complete
+        if (
+          uploadQueueRef.current.length === 0 &&
+          activeUploadsRef.current.size === 0
+        ) {
+          setIsUploading(false)
+          queryClient.invalidateQueries({
+            queryKey: fileKeys.list(courseId),
+          })
+          options.onAllComplete?.()
+        }
+      })
+    }
+  }, [uploadItems, maxConcurrent, uploadFile, queryClient, courseId, options])
+
+  /**
+   * Start uploading all pending files
+   */
+  const startUpload = useCallback(() => {
+    if (uploadItems.length === 0) {
+      toast({
+        variant: 'destructive',
+        title: 'No files to upload',
+        description: 'Please add files before starting upload.',
+      })
+      return
+    }
+
+    setIsUploading(true)
+    processQueue()
+  }, [uploadItems, toast, processQueue])
+
+  /**
+   * Cancel a specific upload
+   */
+  const cancelUpload = useCallback((itemId: string) => {
+    const abortController = abortControllersRef.current.get(itemId)
+    if (abortController) {
+      abortController.abort()
+      abortControllersRef.current.delete(itemId)
+    }
+
+    // Remove from queue
+    uploadQueueRef.current = uploadQueueRef.current.filter(
+      (id) => id !== itemId
+    )
+    activeUploadsRef.current.delete(itemId)
+
+    // Remove from items
+    setUploadItems((prev) => prev.filter((item) => item.id !== itemId))
   }, [])
 
   /**
    * Retry a failed upload
    */
-  const retry = useCallback((itemId: string) => {
-    setQueue((prev) =>
-      prev.map((i) =>
-        i.id === itemId
-          ? {
-              ...i,
-              status: 'pending' as const,
-              progress: 0,
-              retries: 0,
-              error: undefined,
-            }
-          : i
+  const retryUpload = useCallback(
+    (itemId: string) => {
+      const item = uploadItems.find((i) => i.id === itemId)
+      if (!item || item.status !== 'error') return
+
+      // Reset item status
+      setUploadItems((prev) =>
+        prev.map((i) =>
+          i.id === itemId
+            ? { ...i, status: 'pending', progress: 0, error: undefined }
+            : i
+        )
       )
-    )
-  }, [])
+
+      // Add back to queue
+      uploadQueueRef.current.push(itemId)
+
+      // Start processing if not already uploading
+      if (!isUploading) {
+        setIsUploading(true)
+        processQueue()
+      }
+    },
+    [uploadItems, isUploading, processQueue]
+  )
 
   /**
-   * Remove an item from queue
+   * Clear completed uploads
    */
-  const remove = useCallback((itemId: string) => {
-    setQueue((prev) => prev.filter((i) => i.id !== itemId))
+  const clearCompleted = useCallback(() => {
+    setUploadItems((prev) => prev.filter((item) => item.status !== 'success'))
   }, [])
 
   /**
-   * Clear all items from queue
+   * Clear all uploads
    */
   const clearAll = useCallback(() => {
     // Cancel all active uploads
-    abortControllers.current.forEach((controller) => controller.abort())
-    abortControllers.current.clear()
+    abortControllersRef.current.forEach((controller) => controller.abort())
+    abortControllersRef.current.clear()
 
-    setQueue([])
+    // Clear queue and state
+    uploadQueueRef.current = []
+    activeUploadsRef.current.clear()
+    setUploadItems([])
+    setIsUploading(false)
   }, [])
 
+  /**
+   * Get upload statistics
+   */
+  const stats = {
+    total: uploadItems.length,
+    pending: uploadItems.filter((item) => item.status === 'pending').length,
+    uploading: uploadItems.filter((item) => item.status === 'uploading').length,
+    success: uploadItems.filter((item) => item.status === 'success').length,
+    error: uploadItems.filter((item) => item.status === 'error').length,
+  }
+
   return {
-    queue,
+    uploadItems,
+    isUploading,
     stats,
     addFiles,
-    cancel,
-    retry,
-    remove,
+    startUpload,
+    cancelUpload,
+    retryUpload,
+    clearCompleted,
     clearAll,
   }
 }

@@ -1,30 +1,27 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { setCsrfCookie, getCsrfToken } from '@/lib/csrf'
-import { apiRateLimiter, getRateLimitKey } from '@/lib/rate-limit'
+import type { NextRequest } from 'next/server'
+import { successResponse, handleError } from '@/lib/api-response'
+import { getCsrfToken } from '@/lib/csrf-server'
 
 /**
- * GET /api/csrf
- * Returns a CSRF token for client-side forms
- * Also sets/refreshes the httpOnly cookie
+ * GET /api/csrf - Get CSRF token
  */
-export async function GET(request: NextRequest) {
-  // Rate limiting to prevent token generation abuse
-  const ip = request.headers.get('x-forwarded-for') ?? request.headers.get('x-real-ip')
-  const rateLimitResult = apiRateLimiter(getRateLimitKey(ip, undefined, 'csrf'))
-  if (!rateLimitResult.allowed) {
-    return NextResponse.json(
-      { error: { code: 'RATE_LIMITED', message: 'Too many requests' } },
-      { status: 429 }
-    )
+export async function GET(_request: NextRequest) {
+  try {
+    const token = await getCsrfToken()
+
+    const response = successResponse({ csrfToken: token })
+
+    // Set CSRF token as HTTP-only cookie
+    response.cookies.set('csrf-token', token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      maxAge: 60 * 60 * 24, // 24 hours
+      path: '/',
+    })
+
+    return response
+  } catch (error) {
+    return handleError(error)
   }
-
-  // Check if we already have a valid token
-  let token = await getCsrfToken()
-
-  // If no token exists, generate a new one
-  if (!token) {
-    token = await setCsrfCookie()
-  }
-
-  return NextResponse.json({ token })
 }

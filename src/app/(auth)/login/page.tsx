@@ -1,27 +1,46 @@
 import type { Metadata } from 'next'
 import { LoginForm } from '@/components/auth/login-form'
-import { BookOpen } from 'lucide-react'
+import { Alert, AlertDescription } from '@/components/ui/alert'
+
+export const dynamic = 'force-dynamic'
 
 export const metadata: Metadata = {
-  title: 'Sign In - Luma',
-  description: 'Sign in to your Luma account to access AI-powered PDF learning.',
+  title: 'Login - Luma',
+  description: 'Log in to your Luma account',
 }
 
-export default function LoginPage() {
+export default async function LoginPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ verified?: string; redirect?: string }>
+}) {
+  const params = await searchParams
+
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center bg-slate-50 p-4">
-      {/* Branding */}
-      <div className="mb-8 flex items-center gap-2">
-        <BookOpen className="h-8 w-8 text-indigo-600" aria-hidden="true" />
-        <span className="font-heading text-3xl font-bold text-slate-800">Luma</span>
+    <div className="space-y-6">
+      {params.verified === 'true' && (
+        <Alert>
+          <AlertDescription>
+            Email verified successfully! You can now log in.
+          </AlertDescription>
+        </Alert>
+      )}
+      {params.verified === 'false' && (
+        <Alert variant="destructive">
+          <AlertDescription>
+            Failed to verify email. The link may be invalid or expired.
+          </AlertDescription>
+        </Alert>
+      )}
+
+      <div>
+        <h2 className="text-2xl font-bold text-gray-900">Welcome back</h2>
+        <p className="mt-2 text-sm text-gray-600">
+          Log in to your account to continue
+        </p>
       </div>
 
       <LoginForm />
-
-      {/* Footer */}
-      <p className="mt-8 text-sm text-slate-500">
-        AI-Powered PDF Learning Assistant
-      </p>
     </div>
   )
 }

@@ -1,113 +1,90 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import Link from 'next/link'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { Lock, Loader2, AlertCircle, CheckCircle } from 'lucide-react'
-import {
-  Form,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormControl,
-  FormMessage,
-  FormDescription,
-} from '@/components/ui/form'
-import { Input } from '@/components/ui/input'
+import { Eye, EyeOff, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import { Alert, AlertDescription } from '@/components/ui/alert'
-import {
-  Card,
-  CardHeader,
-  CardTitle,
-  CardDescription,
-  CardContent,
-  CardFooter,
-} from '@/components/ui/card'
-import { PasswordStrengthIndicator } from '@/components/ui/password-strength-indicator'
-import { useCsrf } from '@/hooks/use-csrf'
-import { AUTH } from '@/lib/constants'
+import { PasswordStrengthIndicator } from '@/components/auth/password-strength-indicator'
+import { confirmResetPasswordSchema } from '@/lib/validation'
+import { useToast } from '@/hooks/use-toast'
 
-const resetPasswordSchema = z.object({
-  password: z
-    .string()
-    .min(AUTH.PASSWORD_MIN_LENGTH, `Password must be at least ${AUTH.PASSWORD_MIN_LENGTH} characters`),
-  confirmPassword: z.string(),
-}).refine((data) => data.password === data.confirmPassword, {
-  message: 'Passwords do not match',
-  path: ['confirmPassword'],
-})
+const resetFormSchema = confirmResetPasswordSchema
+  .extend({
+    confirmPassword: z.string(),
+  })
+  .refine((data) => data.password === data.confirmPassword, {
+    message: "Passwords don't match",
+    path: ['confirmPassword'],
+  })
 
-type ResetPasswordFormData = z.infer<typeof resetPasswordSchema>
+type ResetPasswordFormData = z.infer<typeof resetFormSchema>
 
 interface ResetPasswordFormProps {
   token: string
 }
 
 export function ResetPasswordForm({ token }: ResetPasswordFormProps) {
+  const router = useRouter()
+  const { toast } = useToast()
+  const [showPassword, setShowPassword] = useState(false)
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false)
+  const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState(false)
-  const [isLoading, setIsLoading] = useState(false)
-  const [countdown, setCountdown] = useState(3)
-  const router = useRouter()
-  const { getHeaders, isLoading: isCsrfLoading, error: csrfError } = useCsrf()
 
-  const isSubmitDisabled = isLoading || isCsrfLoading
-
-  const form = useForm<ResetPasswordFormData>({
-    resolver: zodResolver(resetPasswordSchema),
+  const {
+    register,
+    handleSubmit,
+    watch,
+    formState: { errors },
+  } = useForm<ResetPasswordFormData>({
+    resolver: zodResolver(resetFormSchema),
     defaultValues: {
-      password: '',
-      confirmPassword: '',
+      token,
     },
   })
 
-  const watchedPassword = form.watch('password')
+  const password = watch('password')
 
-  // Redirect countdown after success
-  useEffect(() => {
-    if (success && countdown > 0) {
-      const timer = setTimeout(() => {
-        setCountdown((prev) => prev - 1)
-      }, 1000)
-      return () => clearTimeout(timer)
-    } else if (success && countdown === 0) {
-      router.push('/login')
-    }
-  }, [success, countdown, router])
-
-  async function onSubmit(data: ResetPasswordFormData) {
-    setIsLoading(true)
-    setError(null)
-
+  const onSubmit = async (data: ResetPasswordFormData) => {
     try {
+      setIsLoading(true)
+      setError(null)
+
       const response = await fetch('/api/auth/confirm-reset', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...getHeaders(),
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          token,
+          token: data.token,
           password: data.password,
         }),
-        credentials: 'include',
       })
 
       const result = await response.json()
 
-      if (!result.success) {
-        setError(result.error?.message || 'Failed to reset password. Please try again.')
+      if (!response.ok) {
+        setError(result.error?.message || 'Failed to reset password')
         return
       }
 
       setSuccess(true)
-    } catch (err) {
-      console.error('Reset password error:', err)
-      setError('An unexpected error occurred. Please try again.')
+      toast({
+        title: 'Success',
+        description: 'Your password has been reset',
+      })
+
+      // Redirect to login after 2 seconds
+      setTimeout(() => {
+        router.push('/login')
+      }, 2000)
+    } catch {
+      setError('An unexpected error occurred')
     } finally {
       setIsLoading(false)
     }
@@ -115,153 +92,90 @@ export function ResetPasswordForm({ token }: ResetPasswordFormProps) {
 
   if (success) {
     return (
-      <Card className="w-full max-w-md border border-slate-200 bg-white shadow-sm">
-        <CardHeader className="space-y-1">
-          <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-green-100">
-            <CheckCircle className="h-6 w-6 text-green-600" aria-hidden="true" />
-          </div>
-          <CardTitle className="font-heading text-center text-2xl font-bold text-slate-800">
-            Password updated
-          </CardTitle>
-          <CardDescription className="text-center text-slate-600">
-            Your password has been successfully reset
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4" role="status" aria-live="polite">
-          <Alert className="border-green-200 bg-green-50 text-green-700">
-            <AlertDescription>
-              You can now sign in with your new password. Redirecting to login
-              in {countdown} seconds...
-            </AlertDescription>
-          </Alert>
-        </CardContent>
-        <CardFooter>
-          <Button
-            variant="outline"
-            className="w-full cursor-pointer transition-colors duration-200"
-            asChild
-          >
-            <Link href="/login">Continue to sign in</Link>
-          </Button>
-        </CardFooter>
-      </Card>
+      <div className="space-y-4">
+        <Alert>
+          <AlertDescription>
+            Your password has been reset successfully. You&apos;ll be redirected
+            to the login page shortly.
+          </AlertDescription>
+        </Alert>
+      </div>
     )
   }
 
   return (
-    <Card className="w-full max-w-md border border-slate-200 bg-white shadow-sm">
-      <CardHeader className="space-y-1">
-        <CardTitle className="font-heading text-2xl font-bold text-slate-800">
-          Reset password
-        </CardTitle>
-        <CardDescription className="text-slate-600">
-          Enter your new password below
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
-        {csrfError && (
-          <Alert variant="destructive" className="mb-4 border-red-200 bg-red-50 text-red-700" role="alert">
-            <AlertCircle className="h-4 w-4" aria-hidden="true" />
-            <AlertDescription>
-              Security token failed to load. Please refresh the page.
-            </AlertDescription>
-          </Alert>
-        )}
-        {error && (
-          <Alert variant="destructive" className="mb-4 border-red-200 bg-red-50 text-red-700" role="alert">
-            <AlertCircle className="h-4 w-4" aria-hidden="true" />
-            <AlertDescription>
-              {error}
-              {error.toLowerCase().includes('expired') || error.toLowerCase().includes('invalid') ? (
-                <span>
-                  {' '}
-                  <Link
-                    href="/forgot-password"
-                    className="font-medium underline hover:text-red-800"
-                  >
-                    Request a new link
-                  </Link>
-                </span>
-              ) : null}
-            </AlertDescription>
-          </Alert>
-        )}
-        <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-            <FormField
-              control={form.control}
-              name="password"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel className="text-slate-700">New password</FormLabel>
-                  <div className="relative">
-                    <Lock className="pointer-events-none absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" aria-hidden="true" />
-                    <FormControl>
-                      <Input
-                        type="password"
-                        placeholder="Enter your new password"
-                        autoComplete="new-password"
-                        disabled={isSubmitDisabled}
-                        className="pl-10 transition-colors duration-200 focus:ring-2 focus:ring-indigo-500"
-                        {...field}
-                      />
-                    </FormControl>
-                  </div>
-                  <FormDescription className="text-slate-500">
-                    Must be at least {AUTH.PASSWORD_MIN_LENGTH} characters
-                  </FormDescription>
-                  {watchedPassword && (
-                    <PasswordStrengthIndicator password={watchedPassword} showCriteria />
-                  )}
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-            <FormField
-              control={form.control}
-              name="confirmPassword"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel className="text-slate-700">Confirm new password</FormLabel>
-                  <div className="relative">
-                    <Lock className="pointer-events-none absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" aria-hidden="true" />
-                    <FormControl>
-                      <Input
-                        type="password"
-                        placeholder="Confirm your new password"
-                        autoComplete="new-password"
-                        disabled={isSubmitDisabled}
-                        className="pl-10 transition-colors duration-200 focus:ring-2 focus:ring-indigo-500"
-                        {...field}
-                      />
-                    </FormControl>
-                  </div>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-            <Button
-              type="submit"
-              className="w-full cursor-pointer bg-indigo-600 transition-colors duration-200 hover:bg-indigo-700 focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
-              disabled={isSubmitDisabled}
-            >
-              {(isLoading || isCsrfLoading) && <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" />}
-              {isLoading ? 'Resetting...' : isCsrfLoading ? 'Loading...' : 'Reset password'}
-            </Button>
-          </form>
-        </Form>
-      </CardContent>
-      <CardFooter className="flex flex-col space-y-2">
-        <div className="text-sm text-slate-500">
-          Remember your password?{' '}
-          <Link
-            href="/login"
-            className="text-indigo-600 transition-colors duration-200 hover:text-indigo-700 hover:underline"
+    <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
+      {error && (
+        <Alert variant="destructive">
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
+      )}
+
+      <input type="hidden" {...register('token')} />
+
+      <div className="space-y-2">
+        <Label htmlFor="password">New Password</Label>
+        <div className="relative">
+          <Input
+            id="password"
+            type={showPassword ? 'text' : 'password'}
+            placeholder="Create a new password"
+            autoComplete="new-password"
+            {...register('password')}
+            disabled={isLoading}
+          />
+          <button
+            type="button"
+            onClick={() => setShowPassword(!showPassword)}
+            className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700"
           >
-            Sign in
-          </Link>
+            {showPassword ? (
+              <EyeOff className="h-4 w-4" />
+            ) : (
+              <Eye className="h-4 w-4" />
+            )}
+          </button>
         </div>
-      </CardFooter>
-    </Card>
+        {errors.password && (
+          <p className="text-sm text-red-600">{errors.password.message}</p>
+        )}
+        {password && <PasswordStrengthIndicator password={password} />}
+      </div>
+
+      <div className="space-y-2">
+        <Label htmlFor="confirmPassword">Confirm New Password</Label>
+        <div className="relative">
+          <Input
+            id="confirmPassword"
+            type={showConfirmPassword ? 'text' : 'password'}
+            placeholder="Confirm your new password"
+            autoComplete="new-password"
+            {...register('confirmPassword')}
+            disabled={isLoading}
+          />
+          <button
+            type="button"
+            onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+            className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700"
+          >
+            {showConfirmPassword ? (
+              <EyeOff className="h-4 w-4" />
+            ) : (
+              <Eye className="h-4 w-4" />
+            )}
+          </button>
+        </div>
+        {errors.confirmPassword && (
+          <p className="text-sm text-red-600">
+            {errors.confirmPassword.message}
+          </p>
+        )}
+      </div>
+
+      <Button type="submit" className="w-full" disabled={isLoading}>
+        {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+        {isLoading ? 'Resetting password...' : 'Reset password'}
+      </Button>
+    </form>
   )
 }

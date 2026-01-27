@@ -1,28 +1,33 @@
 import { defineConfig } from 'vitest/config'
-import react from '@vitejs/plugin-react'
 import path from 'path'
 
 export default defineConfig({
-  plugins: [react()],
   test: {
-    environment: 'jsdom',
     globals: true,
+    environment: 'node',
     setupFiles: ['./tests/setup.ts'],
-    include: ['tests/**/*.test.ts', 'tests/**/*.test.tsx'],
     coverage: {
       provider: 'v8',
       reporter: ['text', 'json', 'html'],
-      include: ['src/**/*.ts', 'src/**/*.tsx'],
       exclude: [
-        'src/**/*.d.ts',
-        'src/types/**',
-        'src/app/**/layout.tsx',
-        'src/app/**/loading.tsx',
-        'src/app/**/error.tsx',
+        'node_modules/',
+        'tests/',
+        '.next/',
+        'dist/',
+        '**/*.config.ts',
+        '**/*.config.js',
+        'prisma/',
       ],
-      // Per-file thresholds for tested modules
-      // Global thresholds disabled as we add coverage incrementally
+      // Coverage thresholds for Phase 9
+      thresholds: {
+        lines: 70,
+        functions: 70,
+        statements: 70,
+        branches: 60,
+      },
     },
+    include: ['tests/**/*.test.ts', 'tests/**/*.test.tsx'],
+    exclude: ['node_modules/', '.next/', 'dist/'],
   },
   resolve: {
     alias: {

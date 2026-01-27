@@ -1,0 +1,43 @@
+{
+  "common": {
+    "save": "Save",
+    "cancel": "Cancel",
+    "delete": "Delete",
+    "confirm": "Confirm",
+    "loading": "Loading...",
+    "error": "Error",
+    "success": "Success"
+  },
+  "settings": {
+    "title": "Settings",
+    "description": "Manage your account settings and preferences",
+    "language": "Language",
+    "languageDescription": "Choose your preferred languages for the interface and AI explanations",
+    "uiLanguage": "Interface Language",
+    "explainLanguage": "AI Explanation Language",
+    "uiLanguageDescription": "Choose the language for the user interface",
+    "explainLanguageDescription": "Choose the language for AI explanations and tutoring",
+    "saved": "Settings saved successfully",
+    "saveFailed": "Failed to save settings",
+    "loadFailed": "Failed to load language settings. Please try again later.",
+    "languageChangeInfo": "Language changes will take effect immediately. You can change these settings at any time.",
+    "quotaTab": "Quota",
+    "preferencesTab": "Preferences",
+    "profileTab": "Profile",
+    "securityTab": "Security",
+    "profileComingSoon": "Profile settings coming soon",
+    "securityComingSoon": "Security settings coming soon"
+  },
+  "quota": {
+    "title": "Quota",
+    "learningInteractions": "Learning Interactions",
+    "autoExplain": "Auto Explain",
+    "remaining": "Remaining",
+    "used": "Used",
+    "resetDate": "Resets on"
+  },
+  "languages": {
+    "en": "English",
+    "zh": "中文"
+  }
+}

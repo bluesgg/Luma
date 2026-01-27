@@ -1,0 +1,51 @@
+name: Migration Safety Check
+
+on:
+  pull_request:
+    paths:
+      - 'prisma/schema.prisma'
+      - 'prisma/migrations/**'
+
+jobs:
+  check-migration:
+    name: Check Migration Safety
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate Prisma Client
+        run: npm run db:generate
+
+      - name: Check for breaking changes
+        run: |
+          # Check if migration includes dangerous operations
+          if grep -r "DROP TABLE\|DROP COLUMN\|ALTER COLUMN.*TYPE" prisma/migrations/; then
+            echo "::warning::This migration contains potentially breaking changes!"
+            echo "Please ensure you have:"
+            echo "1. Backed up the database"
+            echo "2. Tested on staging environment"
+            echo "3. Prepared rollback plan"
+          fi
+
+      - name: Validate schema
+        run: npx prisma validate
+
+      - name: Check migration status
+        run: |
+          if [ -z "${{ secrets.STAGING_DATABASE_URL }}" ]; then
+            echo "::warning::STAGING_DATABASE_URL not configured, skipping migration status check"
+            exit 0
+          fi
+          npx prisma migrate status
+        env:
+          DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
+          DIRECT_URL: ${{ secrets.STAGING_DIRECT_URL }}

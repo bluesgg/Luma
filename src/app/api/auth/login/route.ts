@@ -1,180 +1,152 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
+import type { NextRequest } from 'next/server'
+import { loginSchema } from '@/lib/validation'
 import {
-  isValidEmail,
-  createAuthError,
-  createAuthSuccess,
-  getUserProfile,
-  recordLoginLog,
-} from '@/lib/auth'
-import { AUTH_ERROR_CODES, type LoginRequest } from '@/types'
+  successResponse,
+  errorResponse,
+  HTTP_STATUS,
+  handleError,
+} from '@/lib/api-response'
+import { ERROR_CODES, SECURITY } from '@/lib/constants'
+import { verifyPassword } from '@/lib/password'
+import { authRateLimit } from '@/lib/rate-limit'
+import { isAccountLocked } from '@/lib/auth'
+import prisma from '@/lib/prisma'
 import { logger } from '@/lib/logger'
-import { authRateLimiter, getRateLimitKey } from '@/lib/rate-limit'
-import { requireCsrf } from '@/lib/csrf'
 
 export async function POST(request: NextRequest) {
   try {
-    // CSRF validation
-    const csrfError = await requireCsrf(request)
-    if (csrfError) return csrfError
+    // Parse and validate request body
+    const body = await request.json()
+    const validation = loginSchema.safeParse(body)
 
-    // Rate limiting
-    const ip = request.headers.get('x-forwarded-for') ?? request.headers.get('x-real-ip')
-    const rateLimitResult = authRateLimiter(getRateLimitKey(ip, undefined, 'login'))
+    if (!validation.success) {
+      return errorResponse(
+        ERROR_CODES.VALIDATION_ERROR,
+        'Validation failed',
+        HTTP_STATUS.BAD_REQUEST,
+        validation.error.errors
+      )
+    }
+
+    const { email: rawEmail, password, rememberMe } = validation.data
+    const email = rawEmail.toLowerCase().trim()
+
+    // Rate limiting by email
+    const rateLimitResult = await authRateLimit(email)
     if (!rateLimitResult.allowed) {
-      return NextResponse.json(
-        createAuthError(AUTH_ERROR_CODES.RATE_LIMITED, 'Too many login attempts. Please try again later'),
-        { status: 429 }
+      return errorResponse(
+        ERROR_CODES.RATE_LIMIT_EXCEEDED,
+        'Too many login attempts. Please try again later.',
+        HTTP_STATUS.TOO_MANY_REQUESTS
       )
     }
 
-    let body: LoginRequest
-    try {
-      body = await request.json()
-    } catch {
-      return NextResponse.json(
-        createAuthError(AUTH_ERROR_CODES.INVALID_CREDENTIALS, 'Invalid request body'),
-        { status: 400 }
-      )
-    }
-    const { email, password, rememberMe = false } = body
-
-    // Validate email format
-    if (!email || !isValidEmail(email)) {
-      return NextResponse.json(
-        createAuthError(
-          AUTH_ERROR_CODES.INVALID_EMAIL,
-          'Please enter a valid email address'
-        ),
-        { status: 400 }
-      )
-    }
-
-    // Validate password presence
-    if (!password) {
-      return NextResponse.json(
-        createAuthError(
-          AUTH_ERROR_CODES.INVALID_CREDENTIALS,
-          'Please enter your password'
-        ),
-        { status: 400 }
-      )
-    }
-
-    const supabase = await createClient()
-
-    // Attempt to sign in with Supabase
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
+    // Find user
+    const user = await prisma.user.findUnique({
+      where: { email },
     })
 
-    if (error) {
-      // Handle specific Supabase errors
-      if (error.message.includes('Invalid login credentials')) {
-        return NextResponse.json(
-          createAuthError(
-            AUTH_ERROR_CODES.INVALID_CREDENTIALS,
-            'Invalid email or password'
-          ),
-          { status: 401 }
-        )
-      }
-
-      if (error.message.includes('Email not confirmed')) {
-        return NextResponse.json(
-          createAuthError(
-            AUTH_ERROR_CODES.EMAIL_NOT_VERIFIED,
-            'Please verify your email before logging in'
-          ),
-          { status: 403 }
-        )
-      }
-
-      if (
-        error.message.includes('rate limit') ||
-        error.message.includes('too many')
-      ) {
-        return NextResponse.json(
-          createAuthError(
-            AUTH_ERROR_CODES.RATE_LIMITED,
-            'Too many login attempts. Please try again later'
-          ),
-          { status: 429 }
-        )
-      }
-
-      logger.error('Supabase login error', error, { action: 'login' })
-      return NextResponse.json(
-        createAuthError(
-          AUTH_ERROR_CODES.INTERNAL_ERROR,
-          'Login failed. Please try again'
-        ),
-        { status: 500 }
-      )
-    }
-
-    if (!data.user || !data.session) {
-      return NextResponse.json(
-        createAuthError(
-          AUTH_ERROR_CODES.INTERNAL_ERROR,
-          'Login failed. Please try again'
-        ),
-        { status: 500 }
-      )
-    }
-
-    // Get user profile
-    const profile = await getUserProfile(data.user.id)
-
-    if (!profile) {
-      logger.error('Profile not found for user', undefined, { userId: data.user.id, action: 'login' })
-      return NextResponse.json(
-        createAuthError(
-          AUTH_ERROR_CODES.INTERNAL_ERROR,
-          'Account configuration error. Please contact support'
-        ),
-        { status: 500 }
-      )
-    }
-
-    // Record login access log
-    await recordLoginLog(data.user.id, {
-      userAgent: request.headers.get('user-agent'),
-      rememberMe,
-    })
-
-    // Note: Session duration is managed by Supabase based on project settings
-    // The rememberMe flag can be used for frontend session persistence hints
-
-    // Note: Session is managed via httpOnly cookies by Supabase
-    // We only expose the expiry time for UI purposes, not the token itself
-    return NextResponse.json(
-      createAuthSuccess({
-        user: {
-          id: data.user.id,
-          email: data.user.email ?? '',
-          emailConfirmedAt: data.user.email_confirmed_at ?? null,
-          createdAt: data.user.created_at,
-        },
-        profile: {
-          userId: profile.userId,
-          role: profile.role,
-          createdAt: profile.createdAt.toISOString(),
-          updatedAt: profile.updatedAt.toISOString(),
-        },
-        sessionExpiresAt: data.session.expires_at,
-      }),
-      { status: 200 }
+    // Generic error message to prevent user enumeration
+    const invalidCredentialsError = errorResponse(
+      ERROR_CODES.AUTH_INVALID_CREDENTIALS,
+      'Invalid email or password',
+      HTTP_STATUS.UNAUTHORIZED
     )
+
+    if (!user) {
+      return invalidCredentialsError
+    }
+
+    // Check if account is locked
+    if (isAccountLocked(user)) {
+      return errorResponse(
+        ERROR_CODES.AUTH_ACCOUNT_LOCKED,
+        'Account is temporarily locked due to multiple failed login attempts. Please try again later.',
+        HTTP_STATUS.FORBIDDEN
+      )
+    }
+
+    // Check if email is verified
+    if (!user.emailConfirmedAt) {
+      return errorResponse(
+        ERROR_CODES.AUTH_EMAIL_NOT_VERIFIED,
+        'Please verify your email address before logging in',
+        HTTP_STATUS.FORBIDDEN
+      )
+    }
+
+    // Verify password
+    const isPasswordValid = await verifyPassword(password, user.passwordHash)
+
+    if (!isPasswordValid) {
+      // Increment failed login attempts
+      const newFailedAttempts = user.failedLoginAttempts + 1
+      const updateData: {
+        failedLoginAttempts: number
+        lockedUntil?: Date
+      } = {
+        failedLoginAttempts: newFailedAttempts,
+      }
+
+      // Lock account if max attempts reached
+      if (newFailedAttempts >= SECURITY.MAX_LOGIN_ATTEMPTS) {
+        updateData.lockedUntil = new Date(
+          Date.now() + SECURITY.LOCKOUT_DURATION_MS
+        )
+      }
+
+      await prisma.user.update({
+        where: { id: user.id },
+        data: updateData,
+      })
+
+      logger.warn('Failed login attempt', {
+        userId: user.id,
+        email,
+        attempts: newFailedAttempts,
+      })
+
+      return invalidCredentialsError
+    }
+
+    // Successful login - reset failed attempts and update last login
+    await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        failedLoginAttempts: 0,
+        lockedUntil: null,
+        lastLoginAt: new Date(),
+      },
+    })
+
+    // Calculate session maxAge
+    const maxAge = rememberMe
+      ? SECURITY.SESSION_MAX_AGE_REMEMBER_DAYS * 24 * 60 * 60
+      : SECURITY.SESSION_MAX_AGE_DAYS * 24 * 60 * 60
+
+    const response = successResponse({
+      user: {
+        id: user.id,
+        email: user.email,
+        role: user.role,
+        emailConfirmedAt: user.emailConfirmedAt,
+      },
+      message: 'Login successful',
+    })
+
+    // Set session cookie with user ID
+    response.cookies.set(SECURITY.SESSION_COOKIE_NAME, user.id, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      maxAge,
+      path: '/',
+    })
+
+    logger.info('User logged in successfully', { userId: user.id, email })
+
+    return response
   } catch (error) {
-    logger.error('Login error', error, { action: 'login' })
-    return NextResponse.json(
-      createAuthError(
-        AUTH_ERROR_CODES.INTERNAL_ERROR,
-        'An unexpected error occurred'
-      ),
-      { status: 500 }
-    )
+    return handleError(error)
   }
 }

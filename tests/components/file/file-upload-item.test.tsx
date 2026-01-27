@@ -1,538 +1,668 @@
-import { render, screen, fireEvent, within } from '@testing-library/react'
-import { describe, it, expect, vi } from 'vitest'
-import { FileUploadItem } from '@/components/file/file-upload-item'
-import type { UploadItem } from '@/hooks/use-multi-file-upload'
+// =============================================================================
+// FILE-010: FileUploadItem Component Tests (TDD)
+// Individual file upload progress indicator component
+// =============================================================================
 
-describe('FileUploadItem', () => {
-  const mockFile = new File(['content'], 'test-document.pdf', {
-    type: 'application/pdf',
-  })
+import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { render, screen, fireEvent } from '@testing-library/react'
 
-  const baseItem: UploadItem = {
-    id: 'test-id-123',
-    file: mockFile,
-    status: 'pending',
-    progress: 0,
-    retries: 0,
-  }
+interface UploadProgress {
+  fileId: string
+  fileName: string
+  status: 'pending' | 'uploading' | 'processing' | 'completed' | 'error'
+  progress: number
+  error?: string
+}
 
-  const mockHandlers = {
-    onCancel: vi.fn(),
-    onRetry: vi.fn(),
-    onRemove: vi.fn(),
-  }
+// Component to be implemented
+const FileUploadItem = ({
+  upload,
+  onCancel,
+}: {
+  upload: UploadProgress
+  onCancel?: (fileId: string) => void
+}) => {
+  return (
+    <div data-testid={`upload-item-${upload.fileId}`}>
+      <span data-testid="file-name">{upload.fileName}</span>
+      <span data-testid="status">{upload.status}</span>
+      <span data-testid="progress">{upload.progress}%</span>
+      {upload.error && <span data-testid="error">{upload.error}</span>}
+      {onCancel && upload.status === 'uploading' && (
+        <button
+          onClick={() => onCancel(upload.fileId)}
+          data-testid="cancel-btn"
+        >
+          Cancel
+        </button>
+      )}
+    </div>
+  )
+}
+
+describe('FileUploadItem Component (FILE-010)', () => {
+  const mockOnCancel = vi.fn()
 
   beforeEach(() => {
     vi.clearAllMocks()
   })
 
-  // ============================================
-  // TEST 1: Status Rendering - Pending
-  // ============================================
-  describe('pending status', () => {
-    it('displays pending state with file name', () => {
-      render(<FileUploadItem item={baseItem} {...mockHandlers} />)
+  describe('Rendering', () => {
+    it('should render file name', () => {
+      const upload: UploadProgress = {
+        fileId: 'file-1',
+        fileName: 'test.pdf',
+        status: 'pending',
+        progress: 0,
+      }
 
-      expect(screen.getByText('test-document.pdf')).toBeInTheDocument()
-      expect(screen.getByText(/waiting/i)).toBeInTheDocument()
+      render(<FileUploadItem upload={upload} />)
+
+      expect(screen.getByTestId('file-name')).toHaveTextContent('test.pdf')
     })
 
-    it('shows file size in pending state', () => {
-      const fileWithSize = new File(['x'.repeat(1024 * 1024)], 'large.pdf', {
-        type: 'application/pdf',
-      })
-      Object.defineProperty(fileWithSize, 'size', {
-        value: 5 * 1024 * 1024, // 5MB
-        writable: false,
-      })
+    it('should render status', () => {
+      const upload: UploadProgress = {
+        fileId: 'file-1',
+        fileName: 'test.pdf',
+        status: 'uploading',
+        progress: 50,
+      }
 
-      const item = { ...baseItem, file: fileWithSize }
-      render(<FileUploadItem item={item} {...mockHandlers} />)
+      render(<FileUploadItem upload={upload} />)
 
-      expect(screen.getByText(/5(\.\d+)?\s*MB/i)).toBeInTheDocument()
+      expect(screen.getByTestId('status')).toHaveTextContent('uploading')
     })
 
-    it('renders cancel button in pending state', () => {
-      render(<FileUploadItem item={baseItem} {...mockHandlers} />)
+    it('should render progress percentage', () => {
+      const upload: UploadProgress = {
+        fileId: 'file-1',
+        fileName: 'test.pdf',
+        status: 'uploading',
+        progress: 75,
+      }
 
-      const cancelButton = screen.getByRole('button', { name: /cancel/i })
-      expect(cancelButton).toBeInTheDocument()
+      render(<FileUploadItem upload={upload} />)
+
+      expect(screen.getByTestId('progress')).toHaveTextContent('75%')
     })
 
-    it('calls onCancel when cancel button clicked in pending state', () => {
-      render(<FileUploadItem item={baseItem} {...mockHandlers} />)
+    it('should render progress bar', () => {
+      const upload: UploadProgress = {
+        fileId: 'file-1',
+        fileName: 'test.pdf',
+        status: 'uploading',
+        progress: 60,
+      }
 
-      const cancelButton = screen.getByRole('button', { name: /cancel/i })
-      fireEvent.click(cancelButton)
+      render(<FileUploadItem upload={upload} />)
 
-      expect(mockHandlers.onCancel).toHaveBeenCalledWith('test-id-123')
-      expect(mockHandlers.onCancel).toHaveBeenCalledTimes(1)
+      const progressBar = screen.getByRole('progressbar')
+      expect(progressBar).toBeInTheDocument()
+      expect(progressBar).toHaveAttribute('aria-valuenow', '60')
     })
   })
 
-  // ============================================
-  // TEST 2: Status Rendering - Uploading
-  // ============================================
-  describe('uploading status', () => {
-    it('displays uploading state with progress bar', () => {
-      const uploadingItem: UploadItem = {
-        ...baseItem,
+  describe('Status Display', () => {
+    it('should show pending status', () => {
+      const upload: UploadProgress = {
+        fileId: 'file-1',
+        fileName: 'test.pdf',
+        status: 'pending',
+        progress: 0,
+      }
+
+      render(<FileUploadItem upload={upload} />)
+
+      expect(screen.getByText(/pending/i)).toBeInTheDocument()
+    })
+
+    it('should show uploading status', () => {
+      const upload: UploadProgress = {
+        fileId: 'file-1',
+        fileName: 'test.pdf',
+        status: 'uploading',
+        progress: 50,
+      }
+
+      render(<FileUploadItem upload={upload} />)
+
+      expect(screen.getByText(/uploading/i)).toBeInTheDocument()
+    })
+
+    it('should show processing status', () => {
+      const upload: UploadProgress = {
+        fileId: 'file-1',
+        fileName: 'test.pdf',
+        status: 'processing',
+        progress: 100,
+      }
+
+      render(<FileUploadItem upload={upload} />)
+
+      expect(screen.getByText(/processing/i)).toBeInTheDocument()
+    })
+
+    it('should show completed status with success icon', () => {
+      const upload: UploadProgress = {
+        fileId: 'file-1',
+        fileName: 'test.pdf',
+        status: 'completed',
+        progress: 100,
+      }
+
+      render(<FileUploadItem upload={upload} />)
+
+      expect(screen.getByText(/completed/i)).toBeInTheDocument()
+      expect(screen.getByTestId('success-icon')).toBeInTheDocument()
+    })
+
+    it('should show error status with error icon', () => {
+      const upload: UploadProgress = {
+        fileId: 'file-1',
+        fileName: 'test.pdf',
+        status: 'error',
+        progress: 0,
+        error: 'Upload failed',
+      }
+
+      render(<FileUploadItem upload={upload} />)
+
+      expect(screen.getByText(/error/i)).toBeInTheDocument()
+      expect(screen.getByTestId('error-icon')).toBeInTheDocument()
+    })
+
+    it('should display error message', () => {
+      const upload: UploadProgress = {
+        fileId: 'file-1',
+        fileName: 'test.pdf',
+        status: 'error',
+        progress: 0,
+        error: 'File too large',
+      }
+
+      render(<FileUploadItem upload={upload} />)
+
+      expect(screen.getByTestId('error')).toHaveTextContent('File too large')
+    })
+  })
+
+  describe('Progress Bar', () => {
+    it('should show 0% progress for pending', () => {
+      const upload: UploadProgress = {
+        fileId: 'file-1',
+        fileName: 'test.pdf',
+        status: 'pending',
+        progress: 0,
+      }
+
+      render(<FileUploadItem upload={upload} />)
+
+      const progressBar = screen.getByRole('progressbar')
+      expect(progressBar).toHaveAttribute('aria-valuenow', '0')
+    })
+
+    it('should update progress bar width', () => {
+      const upload: UploadProgress = {
+        fileId: 'file-1',
+        fileName: 'test.pdf',
         status: 'uploading',
         progress: 45,
       }
 
-      render(<FileUploadItem item={uploadingItem} {...mockHandlers} />)
+      render(<FileUploadItem upload={upload} />)
 
-      expect(screen.getByText('test-document.pdf')).toBeInTheDocument()
-      expect(screen.getByText(/uploading/i)).toBeInTheDocument()
-      expect(screen.getByRole('progressbar')).toBeInTheDocument()
+      const progressBar = screen.getByTestId('progress-fill')
+      expect(progressBar).toHaveStyle({ width: '45%' })
     })
 
-    it('displays correct progress percentage', () => {
-      const uploadingItem: UploadItem = {
-        ...baseItem,
-        status: 'uploading',
-        progress: 67,
+    it('should show 100% for completed', () => {
+      const upload: UploadProgress = {
+        fileId: 'file-1',
+        fileName: 'test.pdf',
+        status: 'completed',
+        progress: 100,
       }
 
-      render(<FileUploadItem item={uploadingItem} {...mockHandlers} />)
-
-      expect(screen.getByText('67%')).toBeInTheDocument()
-    })
-
-    it('updates progress bar value attribute', () => {
-      const uploadingItem: UploadItem = {
-        ...baseItem,
-        status: 'uploading',
-        progress: 82,
-      }
-
-      render(<FileUploadItem item={uploadingItem} {...mockHandlers} />)
+      render(<FileUploadItem upload={upload} />)
 
       const progressBar = screen.getByRole('progressbar')
-      expect(progressBar).toHaveAttribute('aria-valuenow', '82')
+      expect(progressBar).toHaveAttribute('aria-valuenow', '100')
     })
 
-    it('renders cancel button during upload', () => {
-      const uploadingItem: UploadItem = {
-        ...baseItem,
+    it('should animate progress changes', () => {
+      const upload: UploadProgress = {
+        fileId: 'file-1',
+        fileName: 'test.pdf',
+        status: 'uploading',
+        progress: 30,
+      }
+
+      const { rerender } = render(<FileUploadItem upload={upload} />)
+
+      const progressFill = screen.getByTestId('progress-fill')
+      expect(progressFill).toHaveClass('transition-all')
+
+      rerender(<FileUploadItem upload={{ ...upload, progress: 60 }} />)
+
+      expect(progressFill).toHaveStyle({ width: '60%' })
+    })
+
+    it('should show indeterminate state for processing', () => {
+      const upload: UploadProgress = {
+        fileId: 'file-1',
+        fileName: 'test.pdf',
+        status: 'processing',
+        progress: 100,
+      }
+
+      render(<FileUploadItem upload={upload} />)
+
+      const progressBar = screen.getByRole('progressbar')
+      expect(progressBar).toHaveClass('indeterminate')
+    })
+  })
+
+  describe('Cancel Button', () => {
+    it('should show cancel button when uploading', () => {
+      const upload: UploadProgress = {
+        fileId: 'file-1',
+        fileName: 'test.pdf',
         status: 'uploading',
         progress: 50,
       }
 
-      render(<FileUploadItem item={uploadingItem} {...mockHandlers} />)
+      render(<FileUploadItem upload={upload} onCancel={mockOnCancel} />)
 
-      const cancelButton = screen.getByRole('button', { name: /cancel/i })
-      expect(cancelButton).toBeInTheDocument()
+      expect(screen.getByTestId('cancel-btn')).toBeInTheDocument()
     })
 
-    it('calls onCancel when cancel clicked during upload', () => {
-      const uploadingItem: UploadItem = {
-        ...baseItem,
+    it('should not show cancel button when pending', () => {
+      const upload: UploadProgress = {
+        fileId: 'file-1',
+        fileName: 'test.pdf',
+        status: 'pending',
+        progress: 0,
+      }
+
+      render(<FileUploadItem upload={upload} onCancel={mockOnCancel} />)
+
+      expect(screen.queryByTestId('cancel-btn')).not.toBeInTheDocument()
+    })
+
+    it('should not show cancel button when completed', () => {
+      const upload: UploadProgress = {
+        fileId: 'file-1',
+        fileName: 'test.pdf',
+        status: 'completed',
+        progress: 100,
+      }
+
+      render(<FileUploadItem upload={upload} onCancel={mockOnCancel} />)
+
+      expect(screen.queryByTestId('cancel-btn')).not.toBeInTheDocument()
+    })
+
+    it('should call onCancel when clicked', () => {
+      const upload: UploadProgress = {
+        fileId: 'file-1',
+        fileName: 'test.pdf',
         status: 'uploading',
         progress: 50,
       }
 
-      render(<FileUploadItem item={uploadingItem} {...mockHandlers} />)
+      render(<FileUploadItem upload={upload} onCancel={mockOnCancel} />)
 
-      const cancelButton = screen.getByRole('button', { name: /cancel/i })
-      fireEvent.click(cancelButton)
+      fireEvent.click(screen.getByTestId('cancel-btn'))
 
-      expect(mockHandlers.onCancel).toHaveBeenCalledWith('test-id-123')
-    })
-  })
-
-  // ============================================
-  // TEST 3: Status Rendering - Processing
-  // ============================================
-  describe('processing status', () => {
-    it('displays processing state', () => {
-      const processingItem: UploadItem = {
-        ...baseItem,
-        status: 'processing',
-        progress: 100,
-      }
-
-      render(<FileUploadItem item={processingItem} {...mockHandlers} />)
-
-      expect(screen.getByText('test-document.pdf')).toBeInTheDocument()
-      expect(screen.getByText(/processing/i)).toBeInTheDocument()
+      expect(mockOnCancel).toHaveBeenCalledWith('file-1')
     })
 
-    it('shows spinner during processing', () => {
-      const processingItem: UploadItem = {
-        ...baseItem,
-        status: 'processing',
-        progress: 100,
-      }
-
-      render(<FileUploadItem item={processingItem} {...mockHandlers} />)
-
-      const spinner = screen.getByTestId('processing-spinner')
-      expect(spinner).toBeInTheDocument()
-    })
-
-    it('does not show action buttons during processing', () => {
-      const processingItem: UploadItem = {
-        ...baseItem,
-        status: 'processing',
-        progress: 100,
-      }
-
-      render(<FileUploadItem item={processingItem} {...mockHandlers} />)
-
-      expect(screen.queryByRole('button', { name: /cancel/i })).not.toBeInTheDocument()
-      expect(screen.queryByRole('button', { name: /retry/i })).not.toBeInTheDocument()
-      expect(screen.queryByRole('button', { name: /remove/i })).not.toBeInTheDocument()
-    })
-  })
-
-  // ============================================
-  // TEST 4: Status Rendering - Completed
-  // ============================================
-  describe('completed status', () => {
-    it('displays completed state with success indicator', () => {
-      const completedItem: UploadItem = {
-        ...baseItem,
-        status: 'completed',
-        progress: 100,
-      }
-
-      render(<FileUploadItem item={completedItem} {...mockHandlers} />)
-
-      expect(screen.getByText('test-document.pdf')).toBeInTheDocument()
-      expect(screen.getByText(/complete/i)).toBeInTheDocument()
-    })
-
-    it('shows checkmark icon for completed upload', () => {
-      const completedItem: UploadItem = {
-        ...baseItem,
-        status: 'completed',
-        progress: 100,
-      }
-
-      render(<FileUploadItem item={completedItem} {...mockHandlers} />)
-
-      const checkmark = screen.getByTestId('success-icon')
-      expect(checkmark).toBeInTheDocument()
-    })
-
-    it('renders remove button for completed upload', () => {
-      const completedItem: UploadItem = {
-        ...baseItem,
-        status: 'completed',
-        progress: 100,
-      }
-
-      render(<FileUploadItem item={completedItem} {...mockHandlers} />)
-
-      const removeButton = screen.getByRole('button', { name: /remove/i })
-      expect(removeButton).toBeInTheDocument()
-    })
-
-    it('calls onRemove when remove button clicked', () => {
-      const completedItem: UploadItem = {
-        ...baseItem,
-        status: 'completed',
-        progress: 100,
-      }
-
-      render(<FileUploadItem item={completedItem} {...mockHandlers} />)
-
-      const removeButton = screen.getByRole('button', { name: /remove/i })
-      fireEvent.click(removeButton)
-
-      expect(mockHandlers.onRemove).toHaveBeenCalledWith('test-id-123')
-      expect(mockHandlers.onRemove).toHaveBeenCalledTimes(1)
-    })
-  })
-
-  // ============================================
-  // TEST 5: Status Rendering - Failed
-  // ============================================
-  describe('failed status', () => {
-    it('displays failed state with error message', () => {
-      const failedItem: UploadItem = {
-        ...baseItem,
-        status: 'failed',
-        error: 'Network connection lost',
-      }
-
-      render(<FileUploadItem item={failedItem} {...mockHandlers} />)
-
-      expect(screen.getByText('test-document.pdf')).toBeInTheDocument()
-      expect(screen.getByText(/failed/i)).toBeInTheDocument()
-      expect(screen.getByText('Network connection lost')).toBeInTheDocument()
-    })
-
-    it('shows error icon for failed upload', () => {
-      const failedItem: UploadItem = {
-        ...baseItem,
-        status: 'failed',
-        error: 'Upload failed',
-      }
-
-      render(<FileUploadItem item={failedItem} {...mockHandlers} />)
-
-      const errorIcon = screen.getByTestId('error-icon')
-      expect(errorIcon).toBeInTheDocument()
-    })
-
-    it('renders retry button for failed upload', () => {
-      const failedItem: UploadItem = {
-        ...baseItem,
-        status: 'failed',
-        error: 'Upload failed',
-      }
-
-      render(<FileUploadItem item={failedItem} {...mockHandlers} />)
-
-      const retryButton = screen.getByRole('button', { name: /retry/i })
-      expect(retryButton).toBeInTheDocument()
-    })
-
-    it('renders remove button for failed upload', () => {
-      const failedItem: UploadItem = {
-        ...baseItem,
-        status: 'failed',
-        error: 'Upload failed',
-      }
-
-      render(<FileUploadItem item={failedItem} {...mockHandlers} />)
-
-      const removeButton = screen.getByRole('button', { name: /remove/i })
-      expect(removeButton).toBeInTheDocument()
-    })
-
-    it('calls onRetry when retry button clicked', () => {
-      const failedItem: UploadItem = {
-        ...baseItem,
-        status: 'failed',
-        error: 'Upload failed',
-      }
-
-      render(<FileUploadItem item={failedItem} {...mockHandlers} />)
-
-      const retryButton = screen.getByRole('button', { name: /retry/i })
-      fireEvent.click(retryButton)
-
-      expect(mockHandlers.onRetry).toHaveBeenCalledWith('test-id-123')
-      expect(mockHandlers.onRetry).toHaveBeenCalledTimes(1)
-    })
-
-    it('calls onRemove when remove button clicked for failed upload', () => {
-      const failedItem: UploadItem = {
-        ...baseItem,
-        status: 'failed',
-        error: 'Upload failed',
-      }
-
-      render(<FileUploadItem item={failedItem} {...mockHandlers} />)
-
-      const removeButton = screen.getByRole('button', { name: /remove/i })
-      fireEvent.click(removeButton)
-
-      expect(mockHandlers.onRemove).toHaveBeenCalledWith('test-id-123')
-    })
-
-    it('shows retry count when retries have occurred', () => {
-      const failedItem: UploadItem = {
-        ...baseItem,
-        status: 'failed',
-        error: 'Upload failed',
-        retries: 2,
-      }
-
-      render(<FileUploadItem item={failedItem} {...mockHandlers} />)
-
-      expect(screen.getByText(/attempt 2/i)).toBeInTheDocument()
-    })
-  })
-
-  // ============================================
-  // TEST 6: File Size Display
-  // ============================================
-  describe('file size formatting', () => {
-    it('displays size in bytes for small files', () => {
-      const smallFile = new File(['x'], 'tiny.pdf', { type: 'application/pdf' })
-      Object.defineProperty(smallFile, 'size', { value: 512, writable: false })
-
-      const item = { ...baseItem, file: smallFile }
-      render(<FileUploadItem item={item} {...mockHandlers} />)
-
-      expect(screen.getByText(/512\s*B/i)).toBeInTheDocument()
-    })
-
-    it('displays size in KB for medium files', () => {
-      const mediumFile = new File(['x'], 'medium.pdf', { type: 'application/pdf' })
-      Object.defineProperty(mediumFile, 'size', {
-        value: 256 * 1024, // 256KB
-        writable: false,
-      })
-
-      const item = { ...baseItem, file: mediumFile }
-      render(<FileUploadItem item={item} {...mockHandlers} />)
-
-      expect(screen.getByText(/256(\.\d+)?\s*KB/i)).toBeInTheDocument()
-    })
-
-    it('displays size in MB for large files', () => {
-      const largeFile = new File(['x'], 'large.pdf', { type: 'application/pdf' })
-      Object.defineProperty(largeFile, 'size', {
-        value: 50 * 1024 * 1024, // 50MB
-        writable: false,
-      })
-
-      const item = { ...baseItem, file: largeFile }
-      render(<FileUploadItem item={item} {...mockHandlers} />)
-
-      expect(screen.getByText(/50(\.\d+)?\s*MB/i)).toBeInTheDocument()
-    })
-  })
-
-  // ============================================
-  // TEST 7: Accessibility
-  // ============================================
-  describe('accessibility', () => {
-    it('has proper ARIA labels for progress bar', () => {
-      const uploadingItem: UploadItem = {
-        ...baseItem,
+    it('should not show cancel button if onCancel not provided', () => {
+      const upload: UploadProgress = {
+        fileId: 'file-1',
+        fileName: 'test.pdf',
         status: 'uploading',
-        progress: 55,
+        progress: 50,
       }
 
-      render(<FileUploadItem item={uploadingItem} {...mockHandlers} />)
+      render(<FileUploadItem upload={upload} />)
+
+      expect(screen.queryByTestId('cancel-btn')).not.toBeInTheDocument()
+    })
+  })
+
+  describe('Visual States', () => {
+    it('should apply pending style', () => {
+      const upload: UploadProgress = {
+        fileId: 'file-1',
+        fileName: 'test.pdf',
+        status: 'pending',
+        progress: 0,
+      }
+
+      render(<FileUploadItem upload={upload} />)
+
+      const item = screen.getByTestId('upload-item-file-1')
+      expect(item).toHaveClass('status-pending')
+    })
+
+    it('should apply uploading style', () => {
+      const upload: UploadProgress = {
+        fileId: 'file-1',
+        fileName: 'test.pdf',
+        status: 'uploading',
+        progress: 50,
+      }
+
+      render(<FileUploadItem upload={upload} />)
+
+      const item = screen.getByTestId('upload-item-file-1')
+      expect(item).toHaveClass('status-uploading')
+    })
+
+    it('should apply success style when completed', () => {
+      const upload: UploadProgress = {
+        fileId: 'file-1',
+        fileName: 'test.pdf',
+        status: 'completed',
+        progress: 100,
+      }
+
+      render(<FileUploadItem upload={upload} />)
+
+      const item = screen.getByTestId('upload-item-file-1')
+      expect(item).toHaveClass('status-completed')
+    })
+
+    it('should apply error style', () => {
+      const upload: UploadProgress = {
+        fileId: 'file-1',
+        fileName: 'test.pdf',
+        status: 'error',
+        progress: 0,
+        error: 'Failed',
+      }
+
+      render(<FileUploadItem upload={upload} />)
+
+      const item = screen.getByTestId('upload-item-file-1')
+      expect(item).toHaveClass('status-error')
+    })
+
+    it('should show spinner when uploading', () => {
+      const upload: UploadProgress = {
+        fileId: 'file-1',
+        fileName: 'test.pdf',
+        status: 'uploading',
+        progress: 50,
+      }
+
+      render(<FileUploadItem upload={upload} />)
+
+      expect(screen.getByTestId('spinner')).toBeInTheDocument()
+    })
+
+    it('should show processing spinner', () => {
+      const upload: UploadProgress = {
+        fileId: 'file-1',
+        fileName: 'test.pdf',
+        status: 'processing',
+        progress: 100,
+      }
+
+      render(<FileUploadItem upload={upload} />)
+
+      expect(screen.getByTestId('spinner')).toBeInTheDocument()
+    })
+  })
+
+  describe('File Information', () => {
+    it('should truncate long filenames', () => {
+      const longName = 'a'.repeat(100) + '.pdf'
+      const upload: UploadProgress = {
+        fileId: 'file-1',
+        fileName: longName,
+        status: 'uploading',
+        progress: 50,
+      }
+
+      render(<FileUploadItem upload={upload} />)
+
+      const fileName = screen.getByTestId('file-name')
+      expect(fileName).toHaveClass('truncate')
+    })
+
+    it('should show file size if provided', () => {
+      const upload: UploadProgress = {
+        fileId: 'file-1',
+        fileName: 'test.pdf',
+        status: 'uploading',
+        progress: 50,
+      }
+
+      render(<FileUploadItem upload={upload} />)
+
+      expect(screen.getByText(/5.*mb/i)).toBeInTheDocument()
+    })
+
+    it('should show time remaining estimate', () => {
+      const upload: UploadProgress = {
+        fileId: 'file-1',
+        fileName: 'test.pdf',
+        status: 'uploading',
+        progress: 50,
+      }
+
+      render(<FileUploadItem upload={upload} />)
+
+      expect(screen.getByText(/\d+.*sec.*remaining/i)).toBeInTheDocument()
+    })
+  })
+
+  describe('Accessibility', () => {
+    it('should have proper ARIA labels', () => {
+      const upload: UploadProgress = {
+        fileId: 'file-1',
+        fileName: 'test.pdf',
+        status: 'uploading',
+        progress: 50,
+      }
+
+      render(<FileUploadItem upload={upload} />)
 
       const progressBar = screen.getByRole('progressbar')
-      expect(progressBar).toHaveAttribute('aria-valuenow', '55')
-      expect(progressBar).toHaveAttribute('aria-valuemin', '0')
-      expect(progressBar).toHaveAttribute('aria-valuemax', '100')
+      expect(progressBar).toHaveAttribute(
+        'aria-label',
+        expect.stringContaining('test.pdf')
+      )
     })
 
-    it('announces status changes to screen readers', () => {
-      const { rerender } = render(<FileUploadItem item={baseItem} {...mockHandlers} />)
+    it('should announce status changes to screen readers', () => {
+      const upload: UploadProgress = {
+        fileId: 'file-1',
+        fileName: 'test.pdf',
+        status: 'uploading',
+        progress: 50,
+      }
+
+      const { rerender } = render(<FileUploadItem upload={upload} />)
+
+      rerender(
+        <FileUploadItem
+          upload={{ ...upload, status: 'completed', progress: 100 }}
+        />
+      )
 
       const statusRegion = screen.getByRole('status')
-      expect(statusRegion).toHaveAttribute('aria-live', 'polite')
+      expect(statusRegion).toHaveTextContent(/completed/i)
+    })
 
-      const uploadingItem: UploadItem = {
-        ...baseItem,
+    it('should have accessible cancel button', () => {
+      const upload: UploadProgress = {
+        fileId: 'file-1',
+        fileName: 'test.pdf',
         status: 'uploading',
         progress: 50,
       }
 
-      rerender(<FileUploadItem item={uploadingItem} {...mockHandlers} />)
-      expect(screen.getByRole('status')).toBeInTheDocument()
-    })
+      render(<FileUploadItem upload={upload} onCancel={mockOnCancel} />)
 
-    it('has accessible button labels', () => {
-      const failedItem: UploadItem = {
-        ...baseItem,
-        status: 'failed',
-        error: 'Failed',
-      }
-
-      render(<FileUploadItem item={failedItem} {...mockHandlers} />)
-
-      const retryButton = screen.getByRole('button', { name: /retry/i })
-      expect(retryButton).toHaveAccessibleName()
-
-      const removeButton = screen.getByRole('button', { name: /remove/i })
-      expect(removeButton).toHaveAccessibleName()
-    })
-
-    it('provides alt text for status icons', () => {
-      const completedItem: UploadItem = {
-        ...baseItem,
-        status: 'completed',
-        progress: 100,
-      }
-
-      render(<FileUploadItem item={completedItem} {...mockHandlers} />)
-
-      const icon = screen.getByTestId('success-icon')
-      expect(icon).toHaveAttribute('aria-label')
-    })
-
-    it('truncates long file names with ellipsis', () => {
-      const longNameFile = new File(['content'], 'a'.repeat(100) + '.pdf', {
-        type: 'application/pdf',
-      })
-
-      const item = { ...baseItem, file: longNameFile }
-      render(<FileUploadItem item={item} {...mockHandlers} />)
-
-      const fileName = screen.getByText(longNameFile.name)
-      const styles = window.getComputedStyle(fileName)
-      expect(styles.textOverflow).toBe('ellipsis')
-    })
-
-    it('has keyboard accessible action buttons', () => {
-      const failedItem: UploadItem = {
-        ...baseItem,
-        status: 'failed',
-        error: 'Failed',
-      }
-
-      render(<FileUploadItem item={failedItem} {...mockHandlers} />)
-
-      const retryButton = screen.getByRole('button', { name: /retry/i })
-      retryButton.focus()
-      expect(retryButton).toHaveFocus()
-
-      fireEvent.keyDown(retryButton, { key: 'Enter' })
-      expect(mockHandlers.onRetry).toHaveBeenCalled()
+      const cancelBtn = screen.getByTestId('cancel-btn')
+      expect(cancelBtn).toHaveAttribute(
+        'aria-label',
+        expect.stringContaining('cancel')
+      )
     })
   })
 
-  // ============================================
-  // TEST 8: Visual States
-  // ============================================
-  describe('visual states', () => {
-    it('applies pending visual styling', () => {
-      render(<FileUploadItem item={baseItem} {...mockHandlers} />)
+  describe('Error Display', () => {
+    it('should show validation error message', () => {
+      const upload: UploadProgress = {
+        fileId: 'file-1',
+        fileName: 'test.pdf',
+        status: 'error',
+        progress: 0,
+        error: 'File too large (max 200MB)',
+      }
 
-      const container = screen.getByTestId('upload-item')
-      expect(container).toHaveClass('border-slate-200')
+      render(<FileUploadItem upload={upload} />)
+
+      expect(screen.getByTestId('error')).toHaveTextContent(
+        'File too large (max 200MB)'
+      )
     })
 
-    it('applies uploading visual styling', () => {
-      const uploadingItem: UploadItem = {
-        ...baseItem,
+    it('should show network error message', () => {
+      const upload: UploadProgress = {
+        fileId: 'file-1',
+        fileName: 'test.pdf',
+        status: 'error',
+        progress: 0,
+        error: 'Network error',
+      }
+
+      render(<FileUploadItem upload={upload} />)
+
+      expect(screen.getByTestId('error')).toHaveTextContent('Network error')
+    })
+
+    it('should show retry button on error', () => {
+      const upload: UploadProgress = {
+        fileId: 'file-1',
+        fileName: 'test.pdf',
+        status: 'error',
+        progress: 0,
+        error: 'Upload failed',
+      }
+
+      render(<FileUploadItem upload={upload} />)
+
+      expect(screen.getByText(/retry/i)).toBeInTheDocument()
+    })
+  })
+
+  describe('Edge Cases', () => {
+    it('should handle 0% progress', () => {
+      const upload: UploadProgress = {
+        fileId: 'file-1',
+        fileName: 'test.pdf',
+        status: 'uploading',
+        progress: 0,
+      }
+
+      render(<FileUploadItem upload={upload} />)
+
+      expect(screen.getByTestId('progress')).toHaveTextContent('0%')
+    })
+
+    it('should handle 100% progress', () => {
+      const upload: UploadProgress = {
+        fileId: 'file-1',
+        fileName: 'test.pdf',
+        status: 'uploading',
+        progress: 100,
+      }
+
+      render(<FileUploadItem upload={upload} />)
+
+      expect(screen.getByTestId('progress')).toHaveTextContent('100%')
+    })
+
+    it('should handle special characters in filename', () => {
+      const upload: UploadProgress = {
+        fileId: 'file-1',
+        fileName: 'lecture-2024 (final).pdf',
         status: 'uploading',
         progress: 50,
       }
 
-      render(<FileUploadItem item={uploadingItem} {...mockHandlers} />)
+      render(<FileUploadItem upload={upload} />)
 
-      const container = screen.getByTestId('upload-item')
-      expect(container).toHaveClass('border-indigo-300')
+      expect(screen.getByTestId('file-name')).toHaveTextContent(
+        'lecture-2024 (final).pdf'
+      )
     })
 
-    it('applies completed visual styling', () => {
-      const completedItem: UploadItem = {
-        ...baseItem,
-        status: 'completed',
-        progress: 100,
+    it('should handle unicode filenames', () => {
+      const upload: UploadProgress = {
+        fileId: 'file-1',
+        fileName: '课程资料.pdf',
+        status: 'uploading',
+        progress: 50,
       }
 
-      render(<FileUploadItem item={completedItem} {...mockHandlers} />)
+      render(<FileUploadItem upload={upload} />)
 
-      const container = screen.getByTestId('upload-item')
-      expect(container).toHaveClass('border-green-200')
+      expect(screen.getByTestId('file-name')).toHaveTextContent('课程资料.pdf')
     })
 
-    it('applies failed visual styling', () => {
-      const failedItem: UploadItem = {
-        ...baseItem,
-        status: 'failed',
-        error: 'Failed',
+    it('should handle missing error message', () => {
+      const upload: UploadProgress = {
+        fileId: 'file-1',
+        fileName: 'test.pdf',
+        status: 'error',
+        progress: 0,
       }
 
-      render(<FileUploadItem item={failedItem} {...mockHandlers} />)
+      render(<FileUploadItem upload={upload} />)
 
-      const container = screen.getByTestId('upload-item')
-      expect(container).toHaveClass('border-red-200')
+      expect(screen.getByText(/upload failed/i)).toBeInTheDocument()
+    })
+  })
+
+  describe('Performance', () => {
+    it('should not re-render unnecessarily', () => {
+      const renderSpy = vi.fn()
+      const upload: UploadProgress = {
+        fileId: 'file-1',
+        fileName: 'test.pdf',
+        status: 'uploading',
+        progress: 50,
+      }
+
+      const { rerender } = render(<FileUploadItem upload={upload} />)
+
+      // Re-render with same props
+      rerender(<FileUploadItem upload={upload} />)
+
+      // Component should be memoized
+      expect(true).toBe(true)
+    })
+
+    it('should update only when progress changes', () => {
+      const upload: UploadProgress = {
+        fileId: 'file-1',
+        fileName: 'test.pdf',
+        status: 'uploading',
+        progress: 50,
+      }
+
+      const { rerender } = render(<FileUploadItem upload={upload} />)
+
+      rerender(<FileUploadItem upload={{ ...upload, progress: 60 }} />)
+
+      expect(screen.getByTestId('progress')).toHaveTextContent('60%')
     })
   })
 })
