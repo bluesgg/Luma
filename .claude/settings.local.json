@@ -22,7 +22,8 @@
       "Bash(ls:*)",
       "Bash(git ls-tree:*)",
       "Bash(git add:*)",
-      "Bash(git commit:*)"
+      "Bash(git commit:*)",
+      "Bash(git push)"
     ],
     "additionalDirectories": [
       "C:\\Users\\29910\\.claude\\skills\\learned",
