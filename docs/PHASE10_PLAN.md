@@ -19,6 +19,7 @@ DEPLOY-001 (Vercel Deployment Setup)
 ```
 
 All Phase 10 tasks depend on the completion of previous phases, particularly:
+
 - Phase 0: Foundation (FND-001 to FND-008)
 - Phase 1: Authentication (AUTH-001 to AUTH-015)
 - Phase 4: AI Interactive Tutor (TUTOR-001 for Trigger.dev)
@@ -29,6 +30,7 @@ All Phase 10 tasks depend on the completion of previous phases, particularly:
 ## DEPLOY-001: Vercel Deployment Setup
 
 ### Overview
+
 Configure Vercel for hosting the Next.js application with proper environment variables, preview deployments for PRs, and production deployment from the main branch.
 
 ### Files to Create
@@ -227,6 +229,7 @@ jobs:
 #### 1. Update `/package.json` - Add Vercel-specific scripts
 
 Add the following scripts:
+
 ```json
 {
   "scripts": {
@@ -240,6 +243,7 @@ Add the following scripts:
 The following environment variables must be configured in Vercel Dashboard (Settings > Environment Variables):
 
 **Required for all environments:**
+
 ```
 # Database
 DATABASE_URL=postgresql://...
@@ -260,6 +264,7 @@ SESSION_SECRET=<generate with: openssl rand -base64 32>
 ```
 
 **Required for production:**
+
 ```
 # AI Services
 OPENROUTER_API_KEY=sk-or-v1-...
@@ -335,6 +340,7 @@ DIRECT_URL          - Production direct database URL
 ## DEPLOY-002: Database Migration Strategy
 
 ### Overview
+
 Implement a safe database migration process with CI/CD integration and rollback procedures.
 
 ### Files to Create
@@ -353,26 +359,34 @@ This document describes the database migration strategy for Luma Web using Prism
 ### Development
 
 \`\`\`bash
+
 # Create a new migration (after modifying schema.prisma)
+
 npm run db:migrate -- --name <migration_name>
 
 # Apply migrations to development database
+
 npm run db:migrate
 
 # Reset database and apply all migrations
+
 npx prisma migrate reset
 
 # View migration status
+
 npx prisma migrate status
 \`\`\`
 
 ### Production
 
 \`\`\`bash
+
 # Apply pending migrations (CI/CD)
+
 npm run db:migrate:deploy
 
 # Seed database (initial setup only)
+
 npm run db:seed
 \`\`\`
 
@@ -390,6 +404,7 @@ npm run db:seed
 ### 2. CI/CD Pipeline
 
 The deployment workflow automatically:
+
 1. Runs `prisma migrate deploy` before deployment
 2. Only applies pending migrations
 3. Does NOT modify schema (safe for production)
@@ -407,27 +422,33 @@ The deployment workflow automatically:
 
 2. **Create a rollback migration:**
    \`\`\`bash
+
    # Modify schema.prisma to reverse the changes
-   npm run db:migrate -- --name rollback_<original_migration_name>
+
+   npm run db:migrate -- --name rollback\_<original_migration_name>
    \`\`\`
 
 3. **For emergency rollback (data loss risk):**
    \`\`\`bash
+
    # Connect to database directly
+
    psql $DATABASE_URL
 
    # Manually reverse changes using SQL
+
    -- Example: DROP COLUMN added_column FROM table_name;
 
    # Mark migration as rolled back
-   DELETE FROM "_prisma_migrations" WHERE migration_name = '...';
+
+   DELETE FROM "\_prisma_migrations" WHERE migration_name = '...';
    \`\`\`
 
 ### 4. Best Practices
 
 1. **Always backup before migrations:**
    \`\`\`bash
-   pg_dump $DATABASE_URL > backup_$(date +%Y%m%d_%H%M%S).sql
+   pg*dump $DATABASE_URL > backup*$(date +%Y%m%d\_%H%M%S).sql
    \`\`\`
 
 2. **Test migrations on staging first**
@@ -449,6 +470,7 @@ YYYYMMDDHHMMSS_descriptive_name.sql
 \`\`\`
 
 Examples:
+
 - `20260127120000_add_user_profile`
 - `20260127130000_add_index_on_email`
 - `20260127140000_rollback_user_profile`
@@ -458,13 +480,17 @@ Examples:
 ### Migration Failed
 
 \`\`\`bash
+
 # Check migration status
+
 npx prisma migrate status
 
 # Check for drift
+
 npx prisma migrate diff --from-schema-datamodel ./prisma/schema.prisma --to-schema-datasource ./prisma/schema.prisma
 
 # Reset development database (DEVELOPMENT ONLY)
+
 npx prisma migrate reset
 \`\`\`
 
@@ -473,7 +499,9 @@ npx prisma migrate reset
 If production schema drifts from migrations:
 
 \`\`\`bash
+
 # Baseline existing database
+
 npx prisma migrate resolve --applied <migration_name>
 \`\`\`
 ```
@@ -583,6 +611,7 @@ jobs:
 #### 1. Update `/package.json`
 
 Add migration-related scripts:
+
 ```json
 {
   "scripts": {
@@ -596,6 +625,7 @@ Add migration-related scripts:
 ### Step-by-Step Implementation
 
 1. **Create Initial Migration:**
+
    ```bash
    npm run db:migrate -- --name initial_schema
    ```
@@ -605,6 +635,7 @@ Add migration-related scripts:
    - Review the generated SQL
 
 3. **Test Migration Locally:**
+
    ```bash
    npm run db:migrate:status
    npm run db:migrate
@@ -624,6 +655,7 @@ Add migration-related scripts:
 ## DEPLOY-003: Trigger.dev Setup
 
 ### Overview
+
 Configure Trigger.dev for production background job processing, including PDF structure extraction and monthly quota reset jobs.
 
 ### Files to Create
@@ -631,11 +663,11 @@ Configure Trigger.dev for production background job processing, including PDF st
 #### 1. `/trigger.config.ts` - Trigger.dev Configuration
 
 ```typescript
-import type { TriggerConfig } from "@trigger.dev/sdk/v3";
+import type { TriggerConfig } from '@trigger.dev/sdk/v3'
 
 export const config: TriggerConfig = {
-  project: "luma-web",
-  logLevel: "log",
+  project: 'luma-web',
+  logLevel: 'log',
   retries: {
     enabledInDev: true,
     default: {
@@ -645,8 +677,8 @@ export const config: TriggerConfig = {
       factor: 2,
     },
   },
-  dirs: ["./src/trigger"],
-};
+  dirs: ['./src/trigger'],
+}
 ```
 
 #### 2. `/src/trigger/index.ts` - Job Exports
@@ -657,8 +689,8 @@ export const config: TriggerConfig = {
  * Export all background jobs from this file
  */
 
-export * from './jobs/extract-pdf-structure';
-export * from './jobs/quota-reset';
+export * from './jobs/extract-pdf-structure'
+export * from './jobs/quota-reset'
 ```
 
 #### 3. Update `/src/trigger/client.ts` - Enhanced Client Configuration
@@ -668,32 +700,32 @@ export * from './jobs/quota-reset';
  * Trigger.dev Client Configuration for v3
  */
 
-import { configure } from "@trigger.dev/sdk/v3";
+import { configure } from '@trigger.dev/sdk/v3'
 
 // Configure Trigger.dev
 export function configureTrigger() {
   if (!process.env.TRIGGER_API_KEY) {
-    console.warn('TRIGGER_API_KEY not set, background jobs will not run');
-    return;
+    console.warn('TRIGGER_API_KEY not set, background jobs will not run')
+    return
   }
 
   configure({
     secretKey: process.env.TRIGGER_API_KEY,
-  });
+  })
 }
 
 /**
  * Check if Trigger.dev is configured
  */
 export function isTriggerConfigured(): boolean {
-  return !!process.env.TRIGGER_API_KEY;
+  return !!process.env.TRIGGER_API_KEY
 }
 
 /**
  * Get Trigger.dev project configuration
  */
 export function getTriggerProjectId(): string {
-  return 'luma-web';
+  return 'luma-web'
 }
 ```
 
@@ -723,12 +755,14 @@ TRIGGER_SECRET_KEY: z.string().optional(),
 ### Environment Variables for Trigger.dev
 
 **Development:**
+
 ```
 TRIGGER_API_KEY=tr_dev_xxx
 TRIGGER_API_URL=https://api.trigger.dev
 ```
 
 **Production:**
+
 ```
 TRIGGER_API_KEY=tr_prod_xxx
 TRIGGER_SECRET_KEY=tr_sk_xxx (for webhook verification)
@@ -741,11 +775,13 @@ TRIGGER_SECRET_KEY=tr_sk_xxx (for webhook verification)
    - Create a new project named "luma-web"
 
 2. **Install Dependencies:**
+
    ```bash
    npm install @trigger.dev/sdk@latest
    ```
 
 3. **Initialize Trigger.dev:**
+
    ```bash
    npx trigger.dev@latest init
    ```
@@ -756,6 +792,7 @@ TRIGGER_SECRET_KEY=tr_sk_xxx (for webhook verification)
    - Add to Vercel for production
 
 5. **Deploy Tasks:**
+
    ```bash
    npx trigger.dev@latest deploy
    ```
@@ -770,6 +807,7 @@ TRIGGER_SECRET_KEY=tr_sk_xxx (for webhook verification)
 ## DEPLOY-004: Monitoring and Logging
 
 ### Overview
+
 Set up Sentry for error tracking, enhance the logging utility with production capabilities, and configure alert notifications.
 
 ### Files to Create
@@ -781,17 +819,17 @@ Set up Sentry for error tracking, enhance the logging utility with production ca
  * Sentry Error Tracking Configuration
  */
 
-import * as Sentry from '@sentry/nextjs';
+import * as Sentry from '@sentry/nextjs'
 
-const SENTRY_DSN = process.env.NEXT_PUBLIC_SENTRY_DSN;
+const SENTRY_DSN = process.env.NEXT_PUBLIC_SENTRY_DSN
 
 /**
  * Initialize Sentry
  */
 export function initSentry() {
   if (!SENTRY_DSN) {
-    console.warn('Sentry DSN not configured, error tracking disabled');
-    return;
+    console.warn('Sentry DSN not configured, error tracking disabled')
+    return
   }
 
   Sentry.init({
@@ -827,15 +865,15 @@ export function initSentry() {
         event.message = event.message.replace(
           /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g,
           '[EMAIL]'
-        );
+        )
       }
 
       // Don't send errors in development
       if (process.env.NODE_ENV === 'development') {
-        return null;
+        return null
       }
 
-      return event;
+      return event
     },
 
     // Custom tags
@@ -845,7 +883,7 @@ export function initSentry() {
         component: 'nextjs',
       },
     },
-  });
+  })
 }
 
 /**
@@ -857,42 +895,42 @@ export function captureError(
   level: Sentry.SeverityLevel = 'error'
 ) {
   if (!SENTRY_DSN) {
-    console.error('Sentry not configured, error:', error);
-    return;
+    console.error('Sentry not configured, error:', error)
+    return
   }
 
   Sentry.withScope((scope) => {
     if (context) {
-      scope.setExtras(context);
+      scope.setExtras(context)
     }
-    scope.setLevel(level);
-    Sentry.captureException(error);
-  });
+    scope.setLevel(level)
+    Sentry.captureException(error)
+  })
 }
 
 /**
  * Set user context for Sentry
  */
 export function setUserContext(user: {
-  id: string;
-  email?: string;
-  role?: string;
+  id: string
+  email?: string
+  role?: string
 }) {
-  if (!SENTRY_DSN) return;
+  if (!SENTRY_DSN) return
 
   Sentry.setUser({
     id: user.id,
     // Don't include email for privacy
     username: user.role,
-  });
+  })
 }
 
 /**
  * Clear user context (on logout)
  */
 export function clearUserContext() {
-  if (!SENTRY_DSN) return;
-  Sentry.setUser(null);
+  if (!SENTRY_DSN) return
+  Sentry.setUser(null)
 }
 
 /**
@@ -903,14 +941,14 @@ export function addBreadcrumb(
   category: string,
   data?: Record<string, unknown>
 ) {
-  if (!SENTRY_DSN) return;
+  if (!SENTRY_DSN) return
 
   Sentry.addBreadcrumb({
     message,
     category,
     level: 'info',
     data,
-  });
+  })
 }
 ```
 
@@ -922,9 +960,9 @@ export function addBreadcrumb(
  * This file configures Sentry for the browser
  */
 
-import { initSentry } from '@/lib/sentry';
+import { initSentry } from '@/lib/sentry'
 
-initSentry();
+initSentry()
 ```
 
 #### 3. `/sentry.server.config.ts` - Server-side Sentry
@@ -935,9 +973,9 @@ initSentry();
  * This file configures Sentry for Node.js server
  */
 
-import { initSentry } from '@/lib/sentry';
+import { initSentry } from '@/lib/sentry'
 
-initSentry();
+initSentry()
 ```
 
 #### 4. `/sentry.edge.config.ts` - Edge Runtime Sentry
@@ -948,9 +986,9 @@ initSentry();
  * This file configures Sentry for Edge runtime (middleware, edge functions)
  */
 
-import { initSentry } from '@/lib/sentry';
+import { initSentry } from '@/lib/sentry'
 
-initSentry();
+initSentry()
 ```
 
 #### 5. Update `/src/lib/logger.ts` - Enhanced Logger with Sentry Integration
@@ -961,25 +999,25 @@ initSentry();
  * Provides structured logging with automatic error reporting
  */
 
-import { captureError, addBreadcrumb } from './sentry';
+import { captureError, addBreadcrumb } from './sentry'
 
-type LogLevel = 'debug' | 'info' | 'warn' | 'error';
+type LogLevel = 'debug' | 'info' | 'warn' | 'error'
 
 interface LogContext {
-  [key: string]: unknown;
+  [key: string]: unknown
 }
 
 interface LogEntry {
-  timestamp: string;
-  level: LogLevel;
-  message: string;
-  context?: LogContext;
-  traceId?: string;
+  timestamp: string
+  level: LogLevel
+  message: string
+  context?: LogContext
+  traceId?: string
 }
 
 class Logger {
-  private isDevelopment = process.env.NODE_ENV === 'development';
-  private isProduction = process.env.NODE_ENV === 'production';
+  private isDevelopment = process.env.NODE_ENV === 'development'
+  private isProduction = process.env.NODE_ENV === 'production'
 
   /**
    * Format log entry for structured logging
@@ -995,7 +1033,7 @@ class Logger {
       message,
       context,
       traceId: this.getTraceId(),
-    };
+    }
   }
 
   /**
@@ -1003,7 +1041,7 @@ class Logger {
    */
   private getTraceId(): string | undefined {
     // In production, you might get this from headers or generate one
-    return undefined;
+    return undefined
   }
 
   /**
@@ -1012,13 +1050,15 @@ class Logger {
   private output(entry: LogEntry): void {
     if (this.isProduction) {
       // In production, output JSON for log aggregation
-      console.log(JSON.stringify(entry));
+      console.log(JSON.stringify(entry))
     } else {
       // In development, output human-readable format
-      const contextStr = entry.context ? ` ${JSON.stringify(entry.context)}` : '';
+      const contextStr = entry.context
+        ? ` ${JSON.stringify(entry.context)}`
+        : ''
       console.log(
         `[${entry.timestamp}] [${entry.level.toUpperCase()}] ${entry.message}${contextStr}`
-      );
+      )
     }
   }
 
@@ -1027,7 +1067,7 @@ class Logger {
    */
   debug(message: string, context?: LogContext): void {
     if (this.isDevelopment) {
-      this.output(this.formatEntry('debug', message, context));
+      this.output(this.formatEntry('debug', message, context))
     }
   }
 
@@ -1035,20 +1075,20 @@ class Logger {
    * Info level logging
    */
   info(message: string, context?: LogContext): void {
-    this.output(this.formatEntry('info', message, context));
+    this.output(this.formatEntry('info', message, context))
 
     // Add breadcrumb for Sentry
-    addBreadcrumb(message, 'info', context);
+    addBreadcrumb(message, 'info', context)
   }
 
   /**
    * Warning level logging
    */
   warn(message: string, context?: LogContext): void {
-    this.output(this.formatEntry('warn', message, context));
+    this.output(this.formatEntry('warn', message, context))
 
     // Add breadcrumb for Sentry
-    addBreadcrumb(message, 'warning', context);
+    addBreadcrumb(message, 'warning', context)
   }
 
   /**
@@ -1065,43 +1105,43 @@ class Logger {
               name: error.name,
             }
           : error,
-    };
+    }
 
-    this.output(this.formatEntry('error', message, errorContext));
+    this.output(this.formatEntry('error', message, errorContext))
 
     // Report to Sentry in production
     if (this.isProduction && error instanceof Error) {
-      captureError(error, { message, ...context });
+      captureError(error, { message, ...context })
     }
   }
 
   // Context-specific loggers
   auth(message: string, context?: LogContext): void {
-    this.info(message, { ...context, _category: 'auth' });
+    this.info(message, { ...context, _category: 'auth' })
   }
 
   api(message: string, context?: LogContext): void {
-    this.info(message, { ...context, _category: 'api' });
+    this.info(message, { ...context, _category: 'api' })
   }
 
   db(message: string, context?: LogContext): void {
-    this.debug(message, { ...context, _category: 'database' });
+    this.debug(message, { ...context, _category: 'database' })
   }
 
   ai(message: string, context?: LogContext): void {
-    this.info(message, { ...context, _category: 'ai' });
+    this.info(message, { ...context, _category: 'ai' })
   }
 
   storage(message: string, context?: LogContext): void {
-    this.debug(message, { ...context, _category: 'storage' });
+    this.debug(message, { ...context, _category: 'storage' })
   }
 
   trigger(message: string, context?: LogContext): void {
-    this.info(message, { ...context, _category: 'trigger' });
+    this.info(message, { ...context, _category: 'trigger' })
   }
 }
 
-export const logger = new Logger();
+export const logger = new Logger()
 
 /**
  * Performance logging utility
@@ -1111,11 +1151,14 @@ export function logPerformance(
   startTime: number,
   context?: LogContext
 ): void {
-  const duration = Date.now() - startTime;
-  logger.debug(`Performance: ${operation}`, { duration, ...context });
+  const duration = Date.now() - startTime
+  logger.debug(`Performance: ${operation}`, { duration, ...context })
 
   // Add performance breadcrumb
-  addBreadcrumb(`Performance: ${operation}`, 'performance', { duration, ...context });
+  addBreadcrumb(`Performance: ${operation}`, 'performance', {
+    duration,
+    ...context,
+  })
 }
 
 /**
@@ -1127,14 +1170,14 @@ export function logRequest(
   userId?: string,
   statusCode?: number
 ): void {
-  logger.api(`${method} ${path}`, { userId, statusCode });
+  logger.api(`${method} ${path}`, { userId, statusCode })
 }
 
 /**
  * Error reporter with Sentry integration
  */
 export function reportError(error: Error, context?: LogContext): void {
-  logger.error('Unexpected error', error, context);
+  logger.error('Unexpected error', error, context)
 }
 
 /**
@@ -1150,7 +1193,7 @@ export function createLogger(baseContext: LogContext) {
       logger.warn(message, { ...baseContext, ...context }),
     error: (message: string, error?: Error | unknown, context?: LogContext) =>
       logger.error(message, error, { ...baseContext, ...context }),
-  };
+  }
 }
 ```
 
@@ -1159,12 +1202,12 @@ export function createLogger(baseContext: LogContext) {
 #### 1. Update `/next.config.mjs` - Add Sentry webpack plugin
 
 ```javascript
-import { withSentryConfig } from '@sentry/nextjs';
+import { withSentryConfig } from '@sentry/nextjs'
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   // ... existing config
-};
+}
 
 // Wrap with Sentry
 const sentryWebpackPluginOptions = {
@@ -1174,9 +1217,9 @@ const sentryWebpackPluginOptions = {
   widenClientFileUpload: true,
   hideSourceMaps: true,
   disableLogger: true,
-};
+}
 
-export default withSentryConfig(nextConfig, sentryWebpackPluginOptions);
+export default withSentryConfig(nextConfig, sentryWebpackPluginOptions)
 ```
 
 #### 2. Update `/src/lib/env.ts` - Add Sentry Environment Variables
@@ -1217,6 +1260,7 @@ SENTRY_PROJECT=luma-web
    - Copy the DSN
 
 2. **Install Sentry:**
+
    ```bash
    npm install @sentry/nextjs
    npx @sentry/wizard@latest -i nextjs
@@ -1249,32 +1293,32 @@ SENTRY_PROJECT=luma-web
 
 ### New Files to Create
 
-| File Path | Purpose |
-|-----------|---------|
-| `/vercel.json` | Vercel deployment configuration |
-| `/.github/workflows/deploy.yml` | CI/CD pipeline for deployment |
-| `/.github/workflows/migration-check.yml` | Migration safety checks |
-| `/docs/DATABASE_MIGRATION_GUIDE.md` | Migration documentation |
-| `/scripts/backup-database.sh` | Database backup script |
-| `/trigger.config.ts` | Trigger.dev configuration |
-| `/src/trigger/index.ts` | Trigger.dev job exports |
-| `/src/lib/sentry.ts` | Sentry configuration |
-| `/sentry.client.config.ts` | Client-side Sentry |
-| `/sentry.server.config.ts` | Server-side Sentry |
-| `/sentry.edge.config.ts` | Edge runtime Sentry |
+| File Path                                | Purpose                         |
+| ---------------------------------------- | ------------------------------- |
+| `/vercel.json`                           | Vercel deployment configuration |
+| `/.github/workflows/deploy.yml`          | CI/CD pipeline for deployment   |
+| `/.github/workflows/migration-check.yml` | Migration safety checks         |
+| `/docs/DATABASE_MIGRATION_GUIDE.md`      | Migration documentation         |
+| `/scripts/backup-database.sh`            | Database backup script          |
+| `/trigger.config.ts`                     | Trigger.dev configuration       |
+| `/src/trigger/index.ts`                  | Trigger.dev job exports         |
+| `/src/lib/sentry.ts`                     | Sentry configuration            |
+| `/sentry.client.config.ts`               | Client-side Sentry              |
+| `/sentry.server.config.ts`               | Server-side Sentry              |
+| `/sentry.edge.config.ts`                 | Edge runtime Sentry             |
 
 ### Files to Modify
 
-| File Path | Changes |
-|-----------|---------|
-| `/package.json` | Add new scripts and dependencies |
-| `/next.config.mjs` | Add Sentry webpack plugin |
-| `/src/lib/env.ts` | Add new environment variable validation |
-| `/src/lib/logger.ts` | Add Sentry integration |
-| `/src/trigger/client.ts` | Update for Trigger.dev v3 |
-| `/src/trigger/jobs/extract-pdf-structure.ts` | Full implementation |
-| `/src/trigger/jobs/quota-reset.ts` | Full implementation |
-| `/.env.example` | Add new environment variables |
+| File Path                                    | Changes                                 |
+| -------------------------------------------- | --------------------------------------- |
+| `/package.json`                              | Add new scripts and dependencies        |
+| `/next.config.mjs`                           | Add Sentry webpack plugin               |
+| `/src/lib/env.ts`                            | Add new environment variable validation |
+| `/src/lib/logger.ts`                         | Add Sentry integration                  |
+| `/src/trigger/client.ts`                     | Update for Trigger.dev v3               |
+| `/src/trigger/jobs/extract-pdf-structure.ts` | Full implementation                     |
+| `/src/trigger/jobs/quota-reset.ts`           | Full implementation                     |
+| `/.env.example`                              | Add new environment variables           |
 
 ---
 

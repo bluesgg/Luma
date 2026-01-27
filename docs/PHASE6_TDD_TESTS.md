@@ -10,14 +10,14 @@ This document summarizes all test files created for Phase 6: User Settings. Foll
 
 ## Test Coverage Summary
 
-| Test Category | File Count | Total Tests | Status |
-|--------------|------------|-------------|---------|
-| API Routes | 1 | 50+ | ✅ Complete |
-| React Hooks | 1 | 35+ | ✅ Complete |
-| Utilities (i18n) | 1 | 60+ | ✅ Complete |
-| Components | 1 | 40+ | ✅ Complete |
-| E2E Tests | 1 | 50+ | ✅ Complete |
-| **TOTAL** | **5** | **235+** | ✅ Complete |
+| Test Category    | File Count | Total Tests | Status      |
+| ---------------- | ---------- | ----------- | ----------- |
+| API Routes       | 1          | 50+         | ✅ Complete |
+| React Hooks      | 1          | 35+         | ✅ Complete |
+| Utilities (i18n) | 1          | 60+         | ✅ Complete |
+| Components       | 1          | 40+         | ✅ Complete |
+| E2E Tests        | 1          | 50+         | ✅ Complete |
+| **TOTAL**        | **5**      | **235+**    | ✅ Complete |
 
 ---
 
@@ -28,12 +28,14 @@ This document summarizes all test files created for Phase 6: User Settings. Foll
 **Purpose**: Test the User Preferences API endpoints (GET and PATCH)
 
 **Test Suites**: 2
+
 - GET /api/preferences
 - PATCH /api/preferences
 
 **Key Test Categories**:
 
 #### GET /api/preferences (SETTINGS-001)
+
 - **Default Preferences Creation** (3 tests)
   - Creates default preferences if none exist
   - Persists created preferences in database
@@ -59,6 +61,7 @@ This document summarizes all test files created for Phase 6: User Settings. Foll
 **Total GET Tests**: 12
 
 #### PATCH /api/preferences (SETTINGS-002)
+
 - **Update UI Locale** (4 tests)
   - Updates UI locale to Chinese
   - Updates UI locale to English
@@ -176,6 +179,7 @@ This document summarizes all test files created for Phase 6: User Settings. Foll
 **Purpose**: Test the internationalization (i18n) system
 
 **Test Suites**: 2
+
 - i18n System (SETTINGS-004)
 - i18n React Integration (SETTINGS-005)
 
@@ -445,6 +449,7 @@ npx playwright test tests/e2e/settings.spec.ts --project=webkit
 Following TDD methodology, implement features in this order:
 
 ### Phase 6.1: Database & API Layer
+
 - [ ] **SETTINGS-001**: Implement GET /api/preferences endpoint
   - Create default preferences if none exist
   - Return existing preferences
@@ -457,6 +462,7 @@ Following TDD methodology, implement features in this order:
   - Auto-create preferences if needed
 
 ### Phase 6.2: i18n System
+
 - [ ] **SETTINGS-004**: Implement i18n translation system
   - Create translation files (en.json, zh.json)
   - Implement translation lookup function
@@ -469,6 +475,7 @@ Following TDD methodology, implement features in this order:
   - Support locale switching
 
 ### Phase 6.3: React Hooks
+
 - [ ] **SETTINGS-003**: Implement usePreferences hook
   - Fetch preferences on mount
   - Provide update mutation
@@ -477,6 +484,7 @@ Following TDD methodology, implement features in this order:
   - Auto-refresh on window focus
 
 ### Phase 6.4: UI Components
+
 - [ ] **SETTINGS-006**: Implement LanguageSettings component
   - Render UI language dropdown
   - Render AI explanation language dropdown
@@ -485,12 +493,14 @@ Following TDD methodology, implement features in this order:
   - Display success feedback
 
 ### Phase 6.5: Page Integration
+
 - [ ] Integrate LanguageSettings into Settings page
 - [ ] Add "Preferences" tab to Settings page
 - [ ] Ensure responsive layout
 - [ ] Test full user flow
 
 ### Phase 6.6: E2E Validation
+
 - [ ] Run all E2E tests
 - [ ] Verify tab navigation
 - [ ] Verify language selection persistence
@@ -502,6 +512,7 @@ Following TDD methodology, implement features in this order:
 ## Test Data Requirements
 
 ### Mock User Data
+
 ```typescript
 {
   id: 'test-user-id',
@@ -512,6 +523,7 @@ Following TDD methodology, implement features in this order:
 ```
 
 ### Mock Preference Data
+
 ```typescript
 {
   id: 'pref-1',
@@ -523,6 +535,7 @@ Following TDD methodology, implement features in this order:
 ```
 
 ### Translation Keys Required
+
 - `common.save`, `common.cancel`, `common.delete`, `common.confirm`, `common.loading`
 - `settings.title`, `settings.language`, `settings.uiLanguage`, `settings.explainLanguage`
 - `quota.title`, `quota.learningInteractions`, `quota.autoExplain`, `quota.remaining`
@@ -532,6 +545,7 @@ Following TDD methodology, implement features in this order:
 ## Dependencies
 
 ### Production Dependencies
+
 ```json
 {
   "@tanstack/react-query": "^5.x.x",
@@ -540,6 +554,7 @@ Following TDD methodology, implement features in this order:
 ```
 
 ### Development Dependencies
+
 ```json
 {
   "vitest": "^1.x.x",
@@ -583,6 +598,7 @@ Following TDD methodology, implement features in this order:
 ## Success Criteria
 
 Phase 6 is complete when:
+
 1. ✅ All test files created (5 files)
 2. ⏳ All tests passing (235+ tests)
 3. ⏳ 95%+ code coverage achieved

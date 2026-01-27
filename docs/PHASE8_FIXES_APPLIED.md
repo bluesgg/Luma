@@ -10,12 +10,14 @@
 **Changes Made**:
 
 #### Added Imports (Lines 13-14)
+
 ```typescript
 import { apiRateLimit } from '@/lib/rate-limit'
 import { requireCsrfToken } from '@/lib/csrf'
 ```
 
 #### Updated Schema (Line 113)
+
 ```typescript
 // BEFORE:
 currentPage: z.number().int().min(1).max(500),
@@ -25,6 +27,7 @@ currentPage: z.number().int().min(1).max(10000), // Increased max for large docu
 ```
 
 #### Added Security Checks in PATCH Handler (Lines 118-140)
+
 ```typescript
 // 1. CSRF protection
 try {
@@ -52,6 +55,7 @@ if (!rateLimit.allowed) {
 ```
 
 #### Added Page Count Validation (Lines 189-196)
+
 ```typescript
 // 7. Validate currentPage against actual page count
 if (file.pageCount && currentPage > file.pageCount) {
@@ -64,6 +68,7 @@ if (file.pageCount && currentPage > file.pageCount) {
 ```
 
 #### Updated Step Numbers (Lines 198, 215)
+
 ```typescript
 // 8. Upsert reading progress (was 5.)
 // 9. Return updated progress (was 6.)
@@ -76,6 +81,7 @@ if (file.pageCount && currentPage > file.pageCount) {
 **Changes Made**:
 
 #### Fixed Dependency Array (Lines 89-93)
+
 ```typescript
 // BEFORE:
 useEffect(() => {
@@ -100,6 +106,7 @@ useEffect(() => {
 **Changes Made**:
 
 #### Added State (Line 43)
+
 ```typescript
 // BEFORE:
 const [downloadError, setDownloadError] = useState<Error | null>(null)
@@ -110,6 +117,7 @@ const [isFetchingUrl, setIsFetchingUrl] = useState(false)
 ```
 
 #### Updated Fetch Logic (Lines 82-108)
+
 ```typescript
 // BEFORE:
 async function fetchDownloadUrl() {
@@ -149,6 +157,7 @@ async function fetchDownloadUrl() {
 ```
 
 #### Updated Dependency Array (Line 111)
+
 ```typescript
 // BEFORE:
 }, [file, fileId])
@@ -158,6 +167,7 @@ async function fetchDownloadUrl() {
 ```
 
 #### Updated Retry Handler (Lines 230-233)
+
 ```typescript
 // BEFORE:
 onClick={() => {
@@ -178,16 +188,19 @@ onClick={() => {
 ## Impact Summary
 
 ### Security Improvements
+
 - ✅ Added CSRF token validation to prevent CSRF attacks
 - ✅ Added rate limiting to prevent API abuse
 - ✅ Enhanced input validation with dynamic page count checks
 
 ### Performance Improvements
+
 - ✅ Fixed unnecessary re-renders in `useReadingProgress` hook
 - ✅ Prevented race conditions in PDF URL fetching
 - ✅ Better handling of concurrent async operations
 
 ### Robustness Improvements
+
 - ✅ More comprehensive error handling
 - ✅ Better state management for async operations
 - ✅ Improved data validation logic
@@ -244,6 +257,7 @@ git revert <commit-hash>
 ```
 
 Or restore from backup:
+
 ```bash
 # Before making changes, a backup would have been:
 git stash

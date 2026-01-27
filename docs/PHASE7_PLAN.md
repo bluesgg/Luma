@@ -9,6 +9,7 @@
 ## Executive Summary
 
 Phase 7 implements a separate Admin Dashboard module with the following key features:
+
 - Separate admin authentication system (isolated from user auth)
 - Admin dashboard with system overview, cost monitoring, and user management
 - Background worker health monitoring
@@ -23,6 +24,7 @@ Phase 7 implements a separate Admin Dashboard module with the following key feat
 The existing Prisma schema already includes all necessary models:
 
 **Admin Model**:
+
 ```prisma
 model Admin {
   id           String    @id @default(cuid())
@@ -37,6 +39,7 @@ model Admin {
 ```
 
 **Supporting Models**:
+
 - `AuditLog` - For tracking admin actions
 - `AccessLog` - For user access statistics
 - `AIUsageLog` - For AI cost tracking
@@ -44,6 +47,7 @@ model Admin {
 - `Quota` / `QuotaLog` - For quota management
 
 **Enums**:
+
 - `AdminRole`: SUPER_ADMIN, ADMIN
 - `AccessActionType`: LOGIN, VIEW_FILE, USE_QA, USE_EXPLAIN
 - `AIActionType`: QA, EXPLAIN, STRUCTURE_EXTRACT, TEST_GENERATE
@@ -51,12 +55,14 @@ model Admin {
 ### 2. Security Architecture
 
 **Session Isolation**:
+
 - Different cookie name: `luma-admin-session` (vs `luma-session` for users)
 - Different session validation middleware
 - Different API route protection
 
 **Super Admin Creation**:
 Via environment variables:
+
 ```typescript
 SUPER_ADMIN_EMAIL: z.string().email().optional(),
 SUPER_ADMIN_PASSWORD: z.string().optional(),
@@ -173,6 +179,7 @@ src/
    - Return admin info or 401
 
 **Constants to Add** (`src/lib/constants.ts`):
+
 ```typescript
 export const ADMIN_SECURITY = {
   SESSION_COOKIE_NAME: 'luma-admin-session',
@@ -188,6 +195,7 @@ export const ADMIN_ERROR_CODES = {
 ```
 
 **Validation Schema** (`src/lib/validation.ts`):
+
 ```typescript
 export const adminLoginSchema = z.object({
   email: z.string().email('Invalid email format'),
@@ -198,6 +206,7 @@ export const adminLoginSchema = z.object({
 #### ADMIN-002: Admin Auth Middleware
 
 **Modify `middleware.ts`**:
+
 - Add admin route detection (`/admin/*`, `/api/admin/*`)
 - Admin session cookie validation
 - Redirect unauthenticated to `/admin/login`
@@ -205,6 +214,7 @@ export const adminLoginSchema = z.object({
 #### ADMIN-003: Admin Login Page
 
 **Files to Create**:
+
 1. `src/app/(admin)/login/page.tsx`
 2. `src/app/(admin)/layout.tsx`
 3. `src/components/admin/admin-login-form.tsx`
@@ -214,6 +224,7 @@ export const adminLoginSchema = z.object({
 ### Task Group 2: Admin Dashboard Layout (ADMIN-004)
 
 **Files to Create**:
+
 1. `src/app/(admin)/admin/layout.tsx` - Protected layout with sidebar
 2. `src/components/admin/admin-sidebar.tsx` - Navigation
 3. `src/components/admin/admin-header.tsx` - Header with logout
@@ -228,6 +239,7 @@ export const adminLoginSchema = z.object({
 **File**: `src/app/api/admin/stats/route.ts`
 
 **GET `/api/admin/stats`** Response:
+
 ```typescript
 {
   totalUsers: number,
@@ -243,6 +255,7 @@ export const adminLoginSchema = z.object({
 #### ADMIN-006: System Overview Component
 
 **Files to Create**:
+
 1. `src/app/(admin)/admin/page.tsx`
 2. `src/components/admin/system-overview.tsx`
 3. `src/components/admin/stat-card.tsx`
@@ -258,6 +271,7 @@ export const adminLoginSchema = z.object({
 **GET `/api/admin/access-stats`** with query params: `period`, `groupBy`
 
 Response:
+
 ```typescript
 {
   totalPageViews: number,
@@ -271,6 +285,7 @@ Response:
 #### ADMIN-008: Access Statistics Charts
 
 **Files to Create**:
+
 1. `src/components/admin/access-stats-charts.tsx`
 2. `src/hooks/use-access-stats.ts`
 
@@ -283,6 +298,7 @@ Response:
 **File**: `src/app/api/admin/cost/route.ts`
 
 Response:
+
 ```typescript
 {
   totalInputTokens: number,
@@ -298,6 +314,7 @@ Response:
 **File**: `src/app/api/admin/cost/mathpix/route.ts`
 
 Response:
+
 ```typescript
 {
   totalRequests: number,
@@ -310,6 +327,7 @@ Response:
 #### ADMIN-011: Cost Dashboard Component
 
 **Files to Create**:
+
 1. `src/app/(admin)/admin/cost/page.tsx`
 2. `src/components/admin/cost-dashboard.tsx`
 3. `src/hooks/use-cost-stats.ts`
@@ -323,6 +341,7 @@ Response:
 **File**: `src/app/api/admin/workers/route.ts`
 
 Response:
+
 ```typescript
 {
   summary: { active: number, pending: number, failed: number, zombie: number },
@@ -333,6 +352,7 @@ Response:
 #### ADMIN-013: Worker Health Dashboard
 
 **Files to Create**:
+
 1. `src/app/(admin)/admin/workers/page.tsx`
 2. `src/components/admin/worker-health-dashboard.tsx`
 3. `src/components/admin/job-actions.tsx`
@@ -350,6 +370,7 @@ Response:
 **GET `/api/admin/users`** with pagination
 
 Response:
+
 ```typescript
 {
   items: Array<{
@@ -367,11 +388,13 @@ Response:
 **File**: `src/app/api/admin/users/[id]/quota/route.ts`
 
 **POST** body:
+
 ```typescript
 { bucket: 'LEARNING_INTERACTIONS' | 'AUTO_EXPLAIN', action: 'set_limit' | 'adjust_used' | 'reset', value: number, reason: string }
 ```
 
 #### UI Pages:
+
 1. `src/app/(admin)/admin/users/page.tsx` - User list (ADMIN-017)
 2. `src/app/(admin)/admin/users/[id]/quota/page.tsx` - Quota management (ADMIN-015)
 3. `src/components/admin/user-list-table.tsx`
@@ -388,6 +411,7 @@ Response:
 **File**: `src/app/api/admin/users/[id]/files/route.ts`
 
 Response:
+
 ```typescript
 {
   userId: string, email: string,
@@ -400,6 +424,7 @@ Response:
 #### ADMIN-019: User File Statistics Page
 
 **Files to Create**:
+
 1. `src/app/(admin)/admin/users/[id]/files/page.tsx`
 2. `src/components/admin/user-file-stats.tsx`
 
@@ -408,39 +433,25 @@ Response:
 ## Implementation Order
 
 **Phase 7.1: Core Auth**
+
 1. ADMIN-001: Admin Authentication System
 2. ADMIN-002: Admin Auth Middleware
 3. ADMIN-003: Admin Login Page
 
-**Phase 7.2: Dashboard Foundation**
-4. ADMIN-004: Admin Dashboard Layout
-5. ADMIN-005: System Overview API
-6. ADMIN-006: System Overview Component
+**Phase 7.2: Dashboard Foundation** 4. ADMIN-004: Admin Dashboard Layout 5. ADMIN-005: System Overview API 6. ADMIN-006: System Overview Component
 
-**Phase 7.3: Analytics**
-7. ADMIN-007: User Access Statistics API
-8. ADMIN-008: Access Statistics Charts
-9. ADMIN-009: AI Cost Monitoring API
-10. ADMIN-010: Mathpix Cost API
-11. ADMIN-011: Cost Dashboard Component
+**Phase 7.3: Analytics** 7. ADMIN-007: User Access Statistics API 8. ADMIN-008: Access Statistics Charts 9. ADMIN-009: AI Cost Monitoring API 10. ADMIN-010: Mathpix Cost API 11. ADMIN-011: Cost Dashboard Component
 
-**Phase 7.4: Operations**
-12. ADMIN-012: Worker Health Check API
-13. ADMIN-013: Worker Health Dashboard
+**Phase 7.4: Operations** 12. ADMIN-012: Worker Health Check API 13. ADMIN-013: Worker Health Dashboard
 
-**Phase 7.5: User Management**
-14. ADMIN-016: User List API
-15. ADMIN-017: User List Page
-16. ADMIN-014: Quota Adjustment API
-17. ADMIN-015: User Quota Management Page
-18. ADMIN-018: User File Statistics API
-19. ADMIN-019: User File Statistics Page
+**Phase 7.5: User Management** 14. ADMIN-016: User List API 15. ADMIN-017: User List Page 16. ADMIN-014: Quota Adjustment API 17. ADMIN-015: User Quota Management Page 18. ADMIN-018: User File Statistics API 19. ADMIN-019: User File Statistics Page
 
 ---
 
 ## Testing Strategy
 
 **Unit Tests** (location: `tests/`):
+
 - `tests/api/admin/login.test.ts`
 - `tests/api/admin/stats.test.ts`
 - `tests/api/admin/users.test.ts`
@@ -448,6 +459,7 @@ Response:
 - `tests/lib/admin-auth.test.ts`
 
 **E2E Tests** (location: `tests/e2e/`):
+
 - `tests/e2e/admin-login.spec.ts`
 - `tests/e2e/admin-dashboard.spec.ts`
 - `tests/e2e/admin-users.spec.ts`

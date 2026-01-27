@@ -16,12 +16,12 @@ This document describes the comprehensive TDD test suite created for Phase 7: Ad
 
 ### Total Tests Created: 14 Files
 
-| Category | File Count | Test Files |
-|----------|------------|------------|
-| **Unit Tests (Lib)** | 1 | admin-auth.test.ts |
-| **API Tests** | 9 | login, logout, auth, stats, access-stats, cost, cost-mathpix, workers, users, users-quota, users-files |
-| **Component Tests** | 1 | admin-login-form.test.tsx |
-| **E2E Tests** | 3 | admin-login, admin-dashboard, admin-users |
+| Category             | File Count | Test Files                                                                                             |
+| -------------------- | ---------- | ------------------------------------------------------------------------------------------------------ |
+| **Unit Tests (Lib)** | 1          | admin-auth.test.ts                                                                                     |
+| **API Tests**        | 9          | login, logout, auth, stats, access-stats, cost, cost-mathpix, workers, users, users-quota, users-files |
+| **Component Tests**  | 1          | admin-login-form.test.tsx                                                                              |
+| **E2E Tests**        | 3          | admin-login, admin-dashboard, admin-users                                                              |
 
 ---
 
@@ -30,9 +30,11 @@ This document describes the comprehensive TDD test suite created for Phase 7: Ad
 ### 1. Unit Tests - Library
 
 #### `/tests/lib/admin-auth.test.ts`
+
 **Purpose**: Tests for admin authentication utilities
 
 **Test Coverage**:
+
 - `getAdminSession()` - Session retrieval from cookies
   - Returns null when no session exists
   - Returns admin data for valid session
@@ -68,9 +70,11 @@ This document describes the comprehensive TDD test suite created for Phase 7: Ad
 ### 2. API Tests
 
 #### `/tests/api/admin/login.test.ts`
+
 **Purpose**: Admin login endpoint tests
 
 **Test Coverage**:
+
 - Happy path: Successful login with correct credentials
 - Cookie management: httpOnly, 24-hour expiry, secure flags
 - Audit logging: Login attempt logging with metadata
@@ -86,9 +90,11 @@ This document describes the comprehensive TDD test suite created for Phase 7: Ad
 ---
 
 #### `/tests/api/admin/logout.test.ts`
+
 **Purpose**: Admin logout endpoint tests
 
 **Test Coverage**:
+
 - Happy path: Successful logout
 - Cookie clearing: Max-Age=0, proper path
 - Session destruction
@@ -102,9 +108,11 @@ This document describes the comprehensive TDD test suite created for Phase 7: Ad
 ---
 
 #### `/tests/api/admin/auth.test.ts`
+
 **Purpose**: Admin authentication check endpoint tests
 
 **Test Coverage**:
+
 - Happy path: Returns admin info when authenticated
 - Role information: ADMIN vs SUPER_ADMIN
 - Unauthenticated access: 401 responses
@@ -117,9 +125,11 @@ This document describes the comprehensive TDD test suite created for Phase 7: Ad
 ---
 
 #### `/tests/api/admin/stats.test.ts`
+
 **Purpose**: System statistics API tests
 
 **Test Coverage**:
+
 - Authentication: Admin access required
 - Metrics returned:
   - Total users count
@@ -138,9 +148,11 @@ This document describes the comprehensive TDD test suite created for Phase 7: Ad
 ---
 
 #### `/tests/api/admin/access-stats.test.ts`
+
 **Purpose**: User access statistics API tests
 
 **Test Coverage**:
+
 - Total page views tracking
 - Q&A usage count
 - Explain usage count
@@ -155,9 +167,11 @@ This document describes the comprehensive TDD test suite created for Phase 7: Ad
 ---
 
 #### `/tests/api/admin/cost.test.ts`
+
 **Purpose**: AI cost monitoring API tests
 
 **Test Coverage**:
+
 - Total input/output tokens
 - Estimated cost calculation
 - Breakdown by model
@@ -171,9 +185,11 @@ This document describes the comprehensive TDD test suite created for Phase 7: Ad
 ---
 
 #### `/tests/api/admin/cost-mathpix.test.ts`
+
 **Purpose**: Mathpix cost tracking API tests
 
 **Test Coverage**:
+
 - Total requests count
 - Estimated cost ($0.004 per request)
 - Top users by usage
@@ -186,9 +202,11 @@ This document describes the comprehensive TDD test suite created for Phase 7: Ad
 ---
 
 #### `/tests/api/admin/workers.test.ts`
+
 **Purpose**: Worker health monitoring API tests
 
 **Test Coverage**:
+
 - Summary with job counts (active, pending, failed, zombie)
 - Zombie job detection (>10 minutes processing)
 - Jobs list with metadata
@@ -202,9 +220,11 @@ This document describes the comprehensive TDD test suite created for Phase 7: Ad
 ---
 
 #### `/tests/api/admin/users.test.ts`
+
 **Purpose**: User list API tests
 
 **Test Coverage**:
+
 - User list with details (email, role, dates, locked status)
 - Quota summary per user
 - Course count per user
@@ -219,9 +239,11 @@ This document describes the comprehensive TDD test suite created for Phase 7: Ad
 ---
 
 #### `/tests/api/admin/users-quota.test.ts`
+
 **Purpose**: User quota adjustment API tests
 
 **Test Coverage**:
+
 - Set limit action: Update quota limit
 - Adjust used action: Positive/negative adjustments
 - Reset action: Reset used to 0
@@ -235,9 +257,11 @@ This document describes the comprehensive TDD test suite created for Phase 7: Ad
 ---
 
 #### `/tests/api/admin/users-files.test.ts`
+
 **Purpose**: User file statistics API tests
 
 **Test Coverage**:
+
 - User email and ID
 - Summary: totalFiles, totalStorage, totalPages, filesByStatus
 - Breakdown by course
@@ -252,9 +276,11 @@ This document describes the comprehensive TDD test suite created for Phase 7: Ad
 ### 3. Component Tests
 
 #### `/tests/components/admin/admin-login-form.test.tsx`
+
 **Purpose**: Admin login form component tests
 
 **Test Coverage**:
+
 - Rendering: Email/password fields, no remember me, no forgot password/register links
 - Admin branding: Distinct from user login
 - User interactions: Typing, password visibility toggle
@@ -271,9 +297,11 @@ This document describes the comprehensive TDD test suite created for Phase 7: Ad
 ### 4. E2E Tests
 
 #### `/tests/e2e/admin-login.spec.ts`
+
 **Purpose**: Admin login page and flow E2E tests
 
 **Test Coverage**:
+
 - Page loading: Title, heading, admin branding
 - Form display: Email/password fields, no remember me/forgot password
 - Validation: Empty fields, invalid email
@@ -291,9 +319,11 @@ This document describes the comprehensive TDD test suite created for Phase 7: Ad
 ---
 
 #### `/tests/e2e/admin-dashboard.spec.ts`
+
 **Purpose**: Admin dashboard navigation and overview E2E tests
 
 **Test Coverage**:
+
 - Authentication: Redirect unauthenticated to login
 - Layout: Sidebar, header, logout button, admin info display
 - Navigation: Overview, cost, workers, users pages, active item highlight
@@ -310,9 +340,11 @@ This document describes the comprehensive TDD test suite created for Phase 7: Ad
 ---
 
 #### `/tests/e2e/admin-users.spec.ts`
+
 **Purpose**: User management page and flows E2E tests
 
 **Test Coverage**:
+
 - User list: Table display, columns (email, role, created, quota)
 - Search: Filter by email, no results message, clear search
 - Pagination: Controls, page navigation, total count
@@ -371,16 +403,19 @@ npm run test -- --coverage
 ## Expected Test Behavior
 
 ### Before Implementation
+
 - **All tests will FAIL** - This is expected and correct for TDD
 - Tests serve as specifications for implementation
 - Each test describes exact expected behavior
 
 ### During Implementation
+
 - Tests gradually turn green as features are implemented
 - Failing tests guide what to implement next
 - Passing tests confirm correct implementation
 
 ### After Implementation
+
 - **All tests should PASS**
 - Green test suite confirms Phase 7 completion
 - Tests serve as regression protection
@@ -390,6 +425,7 @@ npm run test -- --coverage
 ## Test Patterns Used
 
 ### 1. API Test Pattern
+
 ```typescript
 describe('POST /api/admin/endpoint', () => {
   beforeEach(async () => {
@@ -423,6 +459,7 @@ describe('POST /api/admin/endpoint', () => {
 ```
 
 ### 2. Component Test Pattern
+
 ```typescript
 describe('ComponentName', () => {
   beforeEach(() => {
@@ -456,6 +493,7 @@ describe('ComponentName', () => {
 ```
 
 ### 3. E2E Test Pattern
+
 ```typescript
 test.describe('Feature Name', () => {
   test.beforeEach(async ({ page, context }) => {
@@ -475,12 +513,14 @@ test.describe('Feature Name', () => {
 ## Integration with Existing Test Suite
 
 ### Test Setup (`tests/setup.ts`)
+
 - Already configured with Vitest globals
 - Mocks for Next.js, Prisma, Supabase
 - Mock helpers: mockUser, mockCourse, mockFile
 - **New mock needed**: `mockAdmin` (to be added during implementation)
 
 ### Test Configuration
+
 - **Vitest**: Configured in `vitest.config.ts`
 - **Playwright**: Configured in `playwright.config.ts`
 - Path aliases: `@/` resolves to `src/`
@@ -504,6 +544,7 @@ test.describe('Feature Name', () => {
 ## Admin-Specific Test Considerations
 
 ### Security Focus
+
 - Separate session cookie (`luma-admin-session`)
 - Shorter session duration (24 hours vs 7 days)
 - Audit logging for all admin actions
@@ -511,12 +552,14 @@ test.describe('Feature Name', () => {
 - No password reset flow (managed by super admin)
 
 ### Authentication Isolation
+
 - Admin auth completely separate from user auth
 - Different middleware handling
-- Different error codes (ADMIN_* vs AUTH_*)
+- Different error codes (ADMIN*\* vs AUTH*\*)
 - No social login or registration
 
 ### Role-Based Testing
+
 - Tests distinguish between ADMIN and SUPER_ADMIN
 - Some operations require SUPER_ADMIN role
 - Role badges and permissions tested
@@ -525,12 +568,12 @@ test.describe('Feature Name', () => {
 
 ## Coverage Metrics Goals
 
-| Metric | Target | Notes |
-|--------|--------|-------|
-| **Line Coverage** | >80% | All critical paths covered |
-| **Branch Coverage** | >75% | All conditional logic tested |
-| **Function Coverage** | >85% | All exported functions tested |
-| **Statement Coverage** | >80% | All statements executed |
+| Metric                 | Target | Notes                         |
+| ---------------------- | ------ | ----------------------------- |
+| **Line Coverage**      | >80%   | All critical paths covered    |
+| **Branch Coverage**    | >75%   | All conditional logic tested  |
+| **Function Coverage**  | >85%   | All exported functions tested |
+| **Statement Coverage** | >80%   | All statements executed       |
 
 ---
 
@@ -608,6 +651,7 @@ export const quotaAdjustmentSchema = z.object({
 **Total Test Cases**: 300+ comprehensive test cases across all categories
 
 **Test Files Created**: 14 files covering:
+
 - 1 utility library
 - 9 API endpoints
 - 1 UI component
@@ -618,6 +662,7 @@ export const quotaAdjustmentSchema = z.object({
 **Status**: ✅ Ready for TDD implementation
 
 All tests are written, documented, and ready to guide Phase 7 implementation. The test suite ensures that the admin dashboard will be:
+
 - Secure (separate auth, audit logging, no sensitive data exposure)
 - Functional (all CRUD operations work correctly)
 - User-friendly (proper validation, error messages, loading states)

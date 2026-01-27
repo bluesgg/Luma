@@ -7,18 +7,19 @@
 
 ## Test Files Overview
 
-| Test Type | File | Purpose | Test Count |
-|-----------|------|---------|------------|
-| API | `tests/api/files/[id]/progress.test.ts` | Reading progress API endpoints | ~210 |
-| Hook | `tests/hooks/use-reading-progress.test.ts` | useReadingProgress hook with debouncing | ~150 |
-| Component | `tests/components/reader/pdf-viewer.test.tsx` | PDF viewer component | ~200 |
-| E2E | `tests/e2e/reader.spec.ts` | Complete reader page flow | ~80 |
+| Test Type | File                                          | Purpose                                 | Test Count |
+| --------- | --------------------------------------------- | --------------------------------------- | ---------- |
+| API       | `tests/api/files/[id]/progress.test.ts`       | Reading progress API endpoints          | ~210       |
+| Hook      | `tests/hooks/use-reading-progress.test.ts`    | useReadingProgress hook with debouncing | ~150       |
+| Component | `tests/components/reader/pdf-viewer.test.tsx` | PDF viewer component                    | ~200       |
+| E2E       | `tests/e2e/reader.spec.ts`                    | Complete reader page flow               | ~80        |
 
 ---
 
 ## Run Individual Test Suites
 
 ### API Tests (Reading Progress)
+
 ```bash
 # Run API tests
 npm test -- tests/api/files/\[id\]/progress.test.ts
@@ -31,6 +32,7 @@ npm test -- tests/api/files/\[id\]/progress.test.ts --verbose
 ```
 
 **What's tested**:
+
 - GET `/api/files/:id/progress` - Fetch current page
 - PATCH `/api/files/:id/progress` - Update current page
 - Authentication & authorization
@@ -39,6 +41,7 @@ npm test -- tests/api/files/\[id\]/progress.test.ts --verbose
 - Error handling
 
 ### Hook Tests (useReadingProgress)
+
 ```bash
 # Run hook tests
 npm test -- tests/hooks/use-reading-progress.test.ts
@@ -48,6 +51,7 @@ npm test -- tests/hooks/use-reading-progress.test.ts --watch
 ```
 
 **What's tested**:
+
 - Immediate local state updates
 - Debounced server updates (300ms)
 - Query caching (30s stale time)
@@ -56,6 +60,7 @@ npm test -- tests/hooks/use-reading-progress.test.ts --watch
 - FileId changes
 
 ### Component Tests (PDF Viewer)
+
 ```bash
 # Run component tests
 npm test -- tests/components/reader/pdf-viewer.test.tsx
@@ -65,6 +70,7 @@ npm test -- tests/components/reader/pdf-viewer.test.tsx --watch
 ```
 
 **What's tested**:
+
 - PDF rendering and loading
 - Page navigation (buttons, keyboard, input)
 - Zoom controls (50%-200%)
@@ -74,6 +80,7 @@ npm test -- tests/components/reader/pdf-viewer.test.tsx --watch
 - Accessibility
 
 ### E2E Tests (Reader Page)
+
 ```bash
 # Run E2E tests
 npm run test:e2e -- tests/e2e/reader.spec.ts
@@ -89,6 +96,7 @@ npm run test:e2e -- tests/e2e/reader.spec.ts --debug
 ```
 
 **What's tested**:
+
 - Complete reader page flow
 - PDF display and navigation
 - Zoom and rotation
@@ -121,6 +129,7 @@ npm test -- --grep "READER-"
 This is expected! TDD means writing tests first, then implementing the code.
 
 **Example output**:
+
 ```
 FAIL  tests/api/files/[id]/progress.test.ts
   ❌ GET /api/files/[id]/progress
@@ -156,6 +165,7 @@ This is **CORRECT** for TDD! ✅
 ## Implementation Workflow
 
 ### Step 1: Implement API Layer
+
 ```bash
 # 1. Create progress API route
 touch src/app/api/files/[id]/progress/route.ts
@@ -170,6 +180,7 @@ npm test -- tests/api/files/\[id\]/progress.test.ts --watch
 **Goal**: All API tests passing ✅
 
 ### Step 2: Implement Hook Layer
+
 ```bash
 # 1. Install dependencies
 npm install use-debounce
@@ -184,6 +195,7 @@ npm test -- tests/hooks/use-reading-progress.test.ts --watch
 **Goal**: All hook tests passing ✅
 
 ### Step 3: Implement Component Layer
+
 ```bash
 # 1. Install dependencies
 npm install react-pdf
@@ -201,6 +213,7 @@ npm test -- tests/components/reader/pdf-viewer.test.tsx --watch
 **Goal**: All component tests passing ✅
 
 ### Step 4: Implement Page Layer
+
 ```bash
 # 1. Create page and layouts
 touch src/app/\(main\)/reader/[fileId]/page.tsx
@@ -218,6 +231,7 @@ npm run test:e2e -- tests/e2e/reader.spec.ts --watch
 ## Debugging Failed Tests
 
 ### API Tests
+
 ```bash
 # Run specific test
 npm test -- tests/api/files/\[id\]/progress.test.ts -t "should return existing progress"
@@ -227,6 +241,7 @@ cat src/app/api/files/[id]/progress/route.ts
 ```
 
 ### Hook Tests
+
 ```bash
 # Run specific test
 npm test -- tests/hooks/use-reading-progress.test.ts -t "should update local state"
@@ -236,6 +251,7 @@ cat src/hooks/use-reading-progress.ts
 ```
 
 ### Component Tests
+
 ```bash
 # Run specific test
 npm test -- tests/components/reader/pdf-viewer.test.tsx -t "should navigate to next page"
@@ -245,6 +261,7 @@ cat src/components/reader/pdf-viewer.tsx
 ```
 
 ### E2E Tests
+
 ```bash
 # Run specific test
 npm run test:e2e -- tests/e2e/reader.spec.ts -g "should load reader page"
@@ -277,6 +294,7 @@ npm test -- tests/api/files/\[id\]/progress.test.ts --coverage
 ## Common Issues
 
 ### Issue: Module not found errors
+
 ```bash
 # Solution: Create placeholder implementations
 touch src/lib/api/progress.ts
@@ -285,6 +303,7 @@ touch src/components/reader/pdf-viewer.tsx
 ```
 
 ### Issue: react-pdf import errors
+
 ```bash
 # Solution: Install react-pdf
 npm install react-pdf
@@ -297,6 +316,7 @@ pdfjs.GlobalWorkerOptions.workerSrc =
 ```
 
 ### Issue: Debounce not working in tests
+
 ```bash
 # Solution: Use fake timers in tests
 vi.useFakeTimers()
@@ -307,6 +327,7 @@ vi.useRealTimers()
 ```
 
 ### Issue: E2E tests timeout
+
 ```bash
 # Solution: Increase timeout
 test('test name', async ({ page }) => {
@@ -320,6 +341,7 @@ test('test name', async ({ page }) => {
 ## CI/CD Integration
 
 ### GitHub Actions Example
+
 ```yaml
 name: Phase 8 Tests
 
@@ -343,6 +365,7 @@ jobs:
 ## Quick Reference: Test Patterns
 
 ### API Test Pattern
+
 ```typescript
 describe('GET /api/files/[id]/progress', () => {
   it('should return existing progress', async () => {
@@ -354,6 +377,7 @@ describe('GET /api/files/[id]/progress', () => {
 ```
 
 ### Hook Test Pattern
+
 ```typescript
 describe('useReadingProgress', () => {
   it('should update local state immediately', async () => {
@@ -367,6 +391,7 @@ describe('useReadingProgress', () => {
 ```
 
 ### Component Test Pattern
+
 ```typescript
 describe('PdfViewer', () => {
   it('should navigate to next page', async () => {
@@ -378,6 +403,7 @@ describe('PdfViewer', () => {
 ```
 
 ### E2E Test Pattern
+
 ```typescript
 test('should load reader page', async ({ page }) => {
   await page.goto('/reader/file-123')

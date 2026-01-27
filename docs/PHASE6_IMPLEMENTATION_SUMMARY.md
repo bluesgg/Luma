@@ -13,6 +13,7 @@ Phase 6 implements user settings management with a focus on language preferences
 ### Files Created
 
 #### API Layer (SET-002)
+
 - **`src/app/api/preferences/route.ts`**
   - GET endpoint: Fetches user preferences, creates defaults if none exist
   - PATCH endpoint: Updates preferences with validation using Zod
@@ -22,6 +23,7 @@ Phase 6 implements user settings management with a focus on language preferences
   - Implements upsert pattern for preferences
 
 #### Data Layer (SET-005)
+
 - **`src/hooks/use-preferences.ts`**
   - Custom React hook using TanStack Query
   - Fetches preferences with caching (5-minute stale time)
@@ -35,6 +37,7 @@ Phase 6 implements user settings management with a focus on language preferences
   - Exported `usePreferences` and `UserPreference` type
 
 #### i18n Layer (SET-004)
+
 - **`src/lib/i18n/index.ts`**
   - Core i18n translation system
   - `I18n` class with `t()` translation method
@@ -62,6 +65,7 @@ Phase 6 implements user settings management with a focus on language preferences
   - Order: QueryClientProvider > I18nProvider > App
 
 #### UI Components (SET-003)
+
 - **`src/components/settings/language-settings.tsx`**
   - User-facing language settings component
   - Two dropdown selects for UI and AI language
@@ -76,6 +80,7 @@ Phase 6 implements user settings management with a focus on language preferences
   - Exported `LanguageSettings` component
 
 #### Settings Page (SET-001)
+
 - **`src/app/(main)/settings/page.tsx`** (updated)
   - Added "Preferences" tab (enabled)
   - Integrated `LanguageSettings` component
@@ -115,6 +120,7 @@ Phase 6 implements user settings management with a focus on language preferences
 ### Database Schema
 
 The existing `UserPreference` model in Prisma was used:
+
 ```prisma
 model UserPreference {
   id            String   @id @default(cuid())
@@ -161,6 +167,7 @@ Phase 6 followed TDD methodology:
 ### Test Execution
 
 Due to environment constraints, tests require:
+
 - Database connection for API tests
 - Proper mocking setup for integration tests
 - Test environment configuration
@@ -176,6 +183,7 @@ npm run build
 ```
 
 **Results**:
+
 - ✅ Compilation successful
 - ✅ No TypeScript errors in Phase 6 code
 - ✅ All prettier/eslint issues resolved
@@ -186,6 +194,7 @@ npm run build
 ### Code Quality
 
 All Phase 6 code adheres to:
+
 - Prettier formatting rules
 - ESLint rules (@typescript-eslint/no-explicit-any, etc.)
 - TypeScript strict mode
@@ -229,6 +238,7 @@ All Phase 6 code adheres to:
 **Authentication**: Required
 
 **Response**:
+
 ```json
 {
   "success": true,
@@ -243,6 +253,7 @@ All Phase 6 code adheres to:
 ```
 
 **Behavior**:
+
 - Returns existing preferences if found
 - Creates default preferences (en/en) if none exist
 - Returns 401 if not authenticated
@@ -252,14 +263,16 @@ All Phase 6 code adheres to:
 **Authentication**: Required
 
 **Request Body**:
+
 ```json
 {
-  "uiLocale": "zh",      // optional: 'en' | 'zh'
-  "explainLocale": "en"  // optional: 'en' | 'zh'
+  "uiLocale": "zh", // optional: 'en' | 'zh'
+  "explainLocale": "en" // optional: 'en' | 'zh'
 }
 ```
 
 **Response**:
+
 ```json
 {
   "success": true,
@@ -274,12 +287,14 @@ All Phase 6 code adheres to:
 ```
 
 **Validation**:
+
 - At least one field must be provided
 - Only 'en' or 'zh' accepted
 - Unknown fields rejected
 - Creates preferences if none exist (upsert)
 
 **Error Responses**:
+
 - 400: Validation error
 - 401: Unauthorized
 - 500: Server error
@@ -292,7 +307,8 @@ All Phase 6 code adheres to:
 import { usePreferences } from '@/hooks'
 
 function MyComponent() {
-  const { preferences, isLoading, error, updatePreferences, isUpdating } = usePreferences()
+  const { preferences, isLoading, error, updatePreferences, isUpdating } =
+    usePreferences()
 
   if (isLoading) return <div>Loading...</div>
   if (error) return <div>Error: {error.message}</div>
@@ -405,13 +421,16 @@ function MyComponent() {
 ## Dependencies
 
 ### New Dependencies
+
 None - used existing dependencies:
+
 - TanStack Query (already in project)
 - Zod (already in project)
 - React, Next.js (existing)
 - Prisma (existing)
 
 ### Existing Dependencies Used
+
 - `@tanstack/react-query`: State management
 - `zod`: Schema validation
 - `next`: App Router, API routes
@@ -483,6 +502,7 @@ tests/
 ## Conclusion
 
 Phase 6 has been successfully implemented following TDD methodology. All core features are functional:
+
 - User preferences API with authentication and validation
 - React hooks for data fetching with optimistic updates
 - Internationalization system with English and Chinese support
@@ -494,6 +514,7 @@ The implementation is production-ready, type-safe, and follows all project conve
 ## Next Steps
 
 **For Future Phases**:
+
 1. Expand translation coverage to entire app
 2. Add more language options
 3. Implement Profile tab settings
@@ -503,6 +524,7 @@ The implementation is production-ready, type-safe, and follows all project conve
 7. Add user notification preferences
 
 **For Testing**:
+
 1. Set up test database for API tests
 2. Run full test suite with proper environment
 3. Add integration tests for i18n + preferences

@@ -143,12 +143,14 @@ src/
 ### Red-Green-Refactor Cycle
 
 1. **RED**: Run tests (they should fail)
+
    ```bash
    npm test tests/lib/sentry.test.ts
    # ❌ Tests fail - feature not implemented
    ```
 
 2. **GREEN**: Implement feature to make tests pass
+
    ```typescript
    // Implement /src/lib/sentry.ts based on test requirements
    ```
@@ -190,6 +192,7 @@ cat vitest.config.ts
 ### Issue: "Cannot find module '@/lib/sentry'"
 
 **Solution:** The module doesn't exist yet (this is expected in TDD). Create the file:
+
 ```bash
 touch src/lib/sentry.ts
 ```
@@ -197,6 +200,7 @@ touch src/lib/sentry.ts
 ### Issue: "No tests found"
 
 **Solution:** Check test file paths:
+
 ```bash
 npm test tests/lib/sentry.test.ts -- --reporter=verbose
 ```
@@ -204,6 +208,7 @@ npm test tests/lib/sentry.test.ts -- --reporter=verbose
 ### Issue: Prisma client errors
 
 **Solution:** Regenerate Prisma client:
+
 ```bash
 npm run db:generate
 ```
@@ -211,6 +216,7 @@ npm run db:generate
 ### Issue: Import errors
 
 **Solution:** Verify path aliases in `tsconfig.json`:
+
 ```json
 {
   "compilerOptions": {
@@ -225,14 +231,14 @@ npm run db:generate
 
 ## Test Statistics
 
-| Component | Test Cases | Coverage Areas |
-|-----------|-----------|----------------|
-| Sentry Integration | 63 | Error tracking, breadcrumbs, user context |
-| Enhanced Logger | 48 | Structured logging, Sentry integration |
-| Trigger.dev Client | 40 | Configuration, validation |
-| PDF Extraction Job | 56 | Payload validation, extraction flow |
-| Quota Reset Job | 61 | Date calculation, quota reset |
-| **TOTAL** | **268** | **All Phase 10 features** |
+| Component          | Test Cases | Coverage Areas                            |
+| ------------------ | ---------- | ----------------------------------------- |
+| Sentry Integration | 63         | Error tracking, breadcrumbs, user context |
+| Enhanced Logger    | 48         | Structured logging, Sentry integration    |
+| Trigger.dev Client | 40         | Configuration, validation                 |
+| PDF Extraction Job | 56         | Payload validation, extraction flow       |
+| Quota Reset Job    | 61         | Date calculation, quota reset             |
+| **TOTAL**          | **268**    | **All Phase 10 features**                 |
 
 ---
 

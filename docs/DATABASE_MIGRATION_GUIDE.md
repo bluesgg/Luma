@@ -46,6 +46,7 @@ npm run db:seed
 ### 2. CI/CD Pipeline
 
 The deployment workflow automatically:
+
 1. Runs `prisma migrate deploy` before deployment
 2. Only applies pending migrations
 3. Does NOT modify schema (safe for production)
@@ -57,17 +58,20 @@ The deployment workflow automatically:
 #### Manual Rollback Steps:
 
 1. **Identify the issue:**
+
    ```bash
    npx prisma migrate status
    ```
 
 2. **Create a rollback migration:**
+
    ```bash
    # Modify schema.prisma to reverse the changes
    npm run db:migrate -- --name rollback_<original_migration_name>
    ```
 
 3. **For emergency rollback (data loss risk):**
+
    ```bash
    # Connect to database directly
    psql $DATABASE_URL
@@ -84,11 +88,13 @@ The deployment workflow automatically:
 1. **Always backup before migrations:**
 
    Using the backup script (recommended):
+
    ```bash
    npm run db:backup
    ```
 
    Or manually with pg_dump:
+
    ```bash
    # For Supabase, use the direct connection URL (not pooled)
    pg_dump "$DIRECT_URL" > backup_$(date +%Y%m%d_%H%M%S).sql
@@ -118,6 +124,7 @@ YYYYMMDDHHMMSS_descriptive_name.sql
 ```
 
 Examples:
+
 - `20260127120000_add_user_profile`
 - `20260127130000_add_index_on_email`
 - `20260127140000_rollback_user_profile`

@@ -31,6 +31,7 @@ docs/
 ## Quick Test Commands
 
 ### Run All Phase 6 Tests
+
 ```bash
 # Unit & Component Tests
 npm run test tests/api/preferences tests/hooks/use-preferences tests/lib/i18n tests/components/settings
@@ -40,6 +41,7 @@ npx playwright test tests/e2e/settings.spec.ts
 ```
 
 ### Run Individual Test Files
+
 ```bash
 # API Tests
 npm run test tests/api/preferences/route.test.ts
@@ -58,6 +60,7 @@ npx playwright test tests/e2e/settings.spec.ts --headed
 ```
 
 ### Watch Mode (for development)
+
 ```bash
 npm run test:watch tests/hooks/use-preferences.test.ts
 ```
@@ -96,6 +99,7 @@ npm run test:watch tests/hooks/use-preferences.test.ts
 ## Key Test Patterns
 
 ### API Test Pattern
+
 ```typescript
 async function getPreferences(userId: string) {
   const response = await fetch('/api/preferences', {
@@ -110,6 +114,7 @@ async function getPreferences(userId: string) {
 ```
 
 ### Hook Test Pattern
+
 ```typescript
 const createWrapper = () => {
   const queryClient = new QueryClient({
@@ -124,6 +129,7 @@ const createWrapper = () => {
 ```
 
 ### Component Test Pattern
+
 ```typescript
 const Wrapper = createWrapper()
 const user = userEvent.setup()
@@ -135,6 +141,7 @@ await waitFor(() => {
 ```
 
 ### E2E Test Pattern
+
 ```typescript
 test('should change UI language', async ({ page }) => {
   await page.goto('/settings')
@@ -152,6 +159,7 @@ test('should change UI language', async ({ page }) => {
 ## Expected API Response Formats
 
 ### GET /api/preferences
+
 ```json
 {
   "success": true,
@@ -166,6 +174,7 @@ test('should change UI language', async ({ page }) => {
 ```
 
 ### PATCH /api/preferences
+
 ```json
 // Request
 {
@@ -260,6 +269,7 @@ model UserPreference {
 ## Common Issues & Solutions
 
 ### Issue: Tests fail with "fetch is not defined"
+
 ```typescript
 // Solution: Mock fetch in beforeEach
 beforeEach(() => {
@@ -268,6 +278,7 @@ beforeEach(() => {
 ```
 
 ### Issue: React Query cache not clearing between tests
+
 ```typescript
 // Solution: Create new QueryClient for each test
 const createWrapper = () => {
@@ -279,6 +290,7 @@ const createWrapper = () => {
 ```
 
 ### Issue: E2E test can't find elements
+
 ```typescript
 // Solution: Use more flexible locators
 // Instead of: page.locator('button:has-text("Save")')
@@ -286,24 +298,28 @@ const createWrapper = () => {
 ```
 
 ### Issue: Async timing issues in tests
+
 ```typescript
 // Solution: Use waitFor with proper conditions
-await waitFor(() => {
-  expect(result.current.isLoading).toBe(false)
-}, { timeout: 5000 })
+await waitFor(
+  () => {
+    expect(result.current.isLoading).toBe(false)
+  },
+  { timeout: 5000 }
+)
 ```
 
 ---
 
 ## Test Coverage Expectations
 
-| Component | Coverage Target | Current |
-|-----------|----------------|---------|
-| API Routes | 100% | 0% (not implemented) |
-| Hooks | 100% | 0% (not implemented) |
-| i18n | 100% | 0% (not implemented) |
-| Components | 95%+ | 0% (not implemented) |
-| E2E | All flows | 0% (not implemented) |
+| Component  | Coverage Target | Current              |
+| ---------- | --------------- | -------------------- |
+| API Routes | 100%            | 0% (not implemented) |
+| Hooks      | 100%            | 0% (not implemented) |
+| i18n       | 100%            | 0% (not implemented) |
+| Components | 95%+            | 0% (not implemented) |
+| E2E        | All flows       | 0% (not implemented) |
 
 ---
 

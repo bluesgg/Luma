@@ -15,6 +15,7 @@
 This second iteration review verifies that all issues identified in Iteration 1 have been properly fixed. The code is now **production-ready** with only 2 very minor micro-optimizations that are optional improvements.
 
 ### Summary Statistics
+
 - **Critical Issues:** 0
 - **Major Issues Fixed:** 2/2 ✅
 - **Minor Issues Fixed:** 6/6 ✅
@@ -34,16 +35,19 @@ This second iteration review verifies that all issues identified in Iteration 1 
 **Original Issue:** i18n instance was recreated on every locale change, causing unnecessary object creation and potential re-renders.
 
 **Original Code:**
+
 ```typescript
 const i18n = useMemo(() => createI18n(translations, locale), [locale])
 ```
 
 **Fixed Code:**
+
 ```typescript
 const i18n = useMemo(() => createI18n(translations, 'en'), [])
 ```
 
 **Verification:**
+
 - ✅ i18n instance now created only once with empty dependency array
 - ✅ Initial locale hardcoded to 'en' (default)
 - ✅ Locale changes handled via `i18n.setLocale()` method (line 46)
@@ -62,6 +66,7 @@ const i18n = useMemo(() => createI18n(translations, 'en'), [])
 **Original Issue:** Provider returned `null` during preferences loading, causing blank screen.
 
 **Original Code:**
+
 ```typescript
 if (isLoading) {
   return null // Or a loading spinner
@@ -70,6 +75,7 @@ return <I18nContext.Provider value={value}>{children}</I18nContext.Provider>
 ```
 
 **Fixed Code:**
+
 ```typescript
 // Don't block rendering - show children with default locale while preferences load
 // This prevents blank screen during initial load
@@ -78,6 +84,7 @@ return <I18nContext.Provider value={value}>{children}</I18nContext.Provider>
 ```
 
 **Verification:**
+
 - ✅ Removed `isLoading` check that returned `null`
 - ✅ Children render immediately with default 'en' locale
 - ✅ Preferences update asynchronously when loaded (via useEffect lines 42-48)
@@ -97,6 +104,7 @@ return <I18nContext.Provider value={value}>{children}</I18nContext.Provider>
 **Original Issue:** PATCH requests didn't include CSRF token for security.
 
 **Original Code:**
+
 ```typescript
 async function updatePreferencesAPI(
   payload: UpdatePreferencesPayload
@@ -109,13 +117,15 @@ async function updatePreferencesAPI(
 ```
 
 **Fixed Code:**
+
 ```typescript
 import { withCsrf } from './use-csrf' // Line 4
 
 async function updatePreferencesAPI(
   payload: UpdatePreferencesPayload
 ): Promise<UserPreference> {
-  const response = await withCsrf('/api/preferences', { // Line 52
+  const response = await withCsrf('/api/preferences', {
+    // Line 52
     method: 'PATCH',
     headers: {
       'Content-Type': 'application/json',
@@ -127,6 +137,7 @@ async function updatePreferencesAPI(
 ```
 
 **Verification:**
+
 - ✅ Import statement added
 - ✅ `withCsrf` wrapper used for PATCH requests
 - ✅ GET request correctly doesn't need CSRF token
@@ -143,6 +154,7 @@ async function updatePreferencesAPI(
 **Status:** ✅ **FIXED CORRECTLY**
 
 **Original Code:**
+
 ```typescript
 <AlertDescription>
   Failed to load language settings. Please try again later.
@@ -150,16 +162,19 @@ async function updatePreferencesAPI(
 ```
 
 **Fixed Code:**
+
 ```typescript
 <AlertDescription>{t('settings.loadFailed')}</AlertDescription>
 ```
 
 **Verification:**
+
 - ✅ Now uses translation system
 - ✅ Translation key present in en.json (line 22)
 - ✅ Translation key present in zh.json (line 22)
 
 **Translations:**
+
 - English: "Failed to load language settings. Please try again later."
 - Chinese: "加载语言设置失败。请稍后重试。"
 
@@ -172,6 +187,7 @@ async function updatePreferencesAPI(
 **Status:** ✅ **FIXED CORRECTLY**
 
 **Original Code:**
+
 ```typescript
 <CardDescription>
   Choose your preferred languages for the interface and AI explanations
@@ -179,16 +195,19 @@ async function updatePreferencesAPI(
 ```
 
 **Fixed Code:**
+
 ```typescript
 <CardDescription>{t('settings.languageDescription')}</CardDescription>
 ```
 
 **Verification:**
+
 - ✅ Now uses translation system
 - ✅ Translation key present in en.json (line 15)
 - ✅ Translation key present in zh.json (line 15)
 
 **Translations:**
+
 - English: "Choose your preferred languages for the interface and AI explanations"
 - Chinese: "选择界面和 AI 讲解的首选语言"
 
@@ -201,6 +220,7 @@ async function updatePreferencesAPI(
 **Status:** ✅ **FIXED CORRECTLY**
 
 **Original Code:**
+
 ```typescript
 <AlertDescription className="text-sm">
   Language changes will take effect immediately. You can change these
@@ -209,6 +229,7 @@ async function updatePreferencesAPI(
 ```
 
 **Fixed Code:**
+
 ```typescript
 <AlertDescription className="text-sm">
   {t('settings.languageChangeInfo')}
@@ -216,11 +237,13 @@ async function updatePreferencesAPI(
 ```
 
 **Verification:**
+
 - ✅ Now uses translation system
 - ✅ Translation key present in en.json (line 23)
 - ✅ Translation key present in zh.json (line 23)
 
 **Translations:**
+
 - English: "Language changes will take effect immediately. You can change these settings at any time."
 - Chinese: "语言更改将立即生效。您可以随时更改这些设置。"
 
@@ -234,6 +257,7 @@ async function updatePreferencesAPI(
 **Original Issue:** Page was server component with hardcoded English text.
 
 **Original Code:**
+
 ```typescript
 export default function SettingsPage() {
   return (
@@ -253,6 +277,7 @@ export default function SettingsPage() {
 ```
 
 **Fixed Code:**
+
 ```typescript
 'use client'
 
@@ -282,6 +307,7 @@ export default function SettingsPage() {
 ```
 
 **Verification:**
+
 - ✅ Added `'use client'` directive
 - ✅ Imported `useI18n` hook
 - ✅ All strings now use `t()` function:
@@ -291,6 +317,7 @@ export default function SettingsPage() {
 - ✅ All translation keys present in both language files
 
 **Translation Keys Added:**
+
 ```json
 {
   "settings": {
@@ -317,6 +344,7 @@ export default function SettingsPage() {
 **Original Issue:** useEffect had `i18n` as dependency, but `i18n` was recreated when `locale` changed (circular).
 
 **Fixed Code:**
+
 ```typescript
 const i18n = useMemo(() => createI18n(translations, 'en'), [])
 
@@ -330,6 +358,7 @@ useEffect(() => {
 ```
 
 **Verification:**
+
 - ✅ Now that `i18n` is stable (created once), having it in dependencies is fine
 - ✅ No more circular dependency
 - ✅ Using `preferences?.uiLocale` instead of full `preferences` is more precise
@@ -342,6 +371,7 @@ useEffect(() => {
 ### Detailed Review of All Files
 
 I performed a comprehensive second review of all 11 Phase 6 files, looking for:
+
 - Any regressions introduced by fixes
 - New edge cases
 - Type safety issues
@@ -357,6 +387,7 @@ I performed a comprehensive second review of all 11 Phase 6 files, looking for:
 **Status:** ✅ EXCELLENT
 
 **Reviewed:**
+
 - Authentication with `requireAuth()` ✅
 - Zod validation with `.strict()` ✅
 - Proper upsert logic ✅
@@ -372,6 +403,7 @@ I performed a comprehensive second review of all 11 Phase 6 files, looking for:
 **Status:** ✅ EXCELLENT
 
 **Reviewed:**
+
 - CSRF token implementation ✅ (Fixed)
 - Optimistic updates logic ✅
 - Error handling and rollback ✅
@@ -379,6 +411,7 @@ I performed a comprehensive second review of all 11 Phase 6 files, looking for:
 - TypeScript types ✅
 
 **Analysis:**
+
 - Line 95-128: Optimistic update logic is correct
   - ✅ `cancelQueries` called before optimistic update
   - ✅ Previous state saved for rollback
@@ -394,11 +427,13 @@ I performed a comprehensive second review of all 11 Phase 6 files, looking for:
 **Status:** ✅ EXCELLENT
 
 **Reviewed:**
+
 - I18n class implementation ✅
 - Translation lookup with fallback ✅
 - Type definitions ✅
 
 **Edge Case Verification:**
+
 - ✅ Tries current locale first
 - ✅ Falls back to English
 - ✅ Returns fallback parameter or key itself
@@ -414,6 +449,7 @@ I performed a comprehensive second review of all 11 Phase 6 files, looking for:
 **Status:** ✅ PRODUCTION READY (optional improvement available)
 
 **Reviewed:**
+
 - i18n instance creation ✅ (Fixed)
 - Loading UX ✅ (Fixed)
 - useEffect logic ✅
@@ -422,6 +458,7 @@ I performed a comprehensive second review of all 11 Phase 6 files, looking for:
 **Micro-Optimization Found:**
 
 **Lines 56-61:**
+
 ```typescript
 const value: I18nContextValue = {
   locale,
@@ -434,6 +471,7 @@ const value: I18nContextValue = {
 **Issue:** The `value` object is recreated on every render when `locale` changes. This could cause unnecessary re-renders in consuming components.
 
 **Impact:**
+
 - **Very minor** - locale changes are infrequent
 - Components using `useI18n()` will re-render when locale changes (expected)
 - The `t` function recreation has negligible performance impact
@@ -442,6 +480,7 @@ const value: I18nContextValue = {
 **Severity:** MICRO-OPTIMIZATION (not critical)
 
 **Optional Improvement:**
+
 ```typescript
 const value: I18nContextValue = useMemo(
   () => ({
@@ -465,11 +504,13 @@ const value: I18nContextValue = useMemo(
 **Status:** ✅ EXCELLENT
 
 **Reviewed:**
+
 - JSON structure ✅
 - Translation completeness ✅
 - All new keys from fixes ✅
 
 **Verification:**
+
 - ✅ All keys properly namespaced (common, settings, quota, languages)
 - ✅ Professional English translations
 - ✅ New keys added for all fixes:
@@ -488,17 +529,20 @@ const value: I18nContextValue = useMemo(
 **Status:** ✅ EXCELLENT
 
 **Reviewed:**
+
 - JSON structure matching English ✅
 - Chinese translations quality ✅
 - Translation completeness ✅
 
 **Verification:**
+
 - ✅ Structure matches en.json perfectly
 - ✅ Proper Chinese translations with correct terminology
 - ✅ All new keys present
 - ✅ Good handling of mixed content (e.g., "AI 讲解语言")
 
 **Key Structure Comparison:**
+
 ```bash
 $ diff <(jq -S 'keys' en.json) <(jq -S 'keys' zh.json)
 # No differences - structure matches perfectly ✅
@@ -513,6 +557,7 @@ $ diff <(jq -S 'keys' en.json) <(jq -S 'keys' zh.json)
 **Status:** ✅ PRODUCTION READY (optional cleanup available)
 
 **Reviewed:**
+
 - Translation usage ✅ (All fixed)
 - Loading states ✅
 - Error handling ✅
@@ -520,6 +565,7 @@ $ diff <(jq -S 'keys' en.json) <(jq -S 'keys' zh.json)
 - User feedback ✅
 
 **All Iteration 1 Issues Fixed:**
+
 - ✅ Error message now translated
 - ✅ Card description now translated
 - ✅ Info alert now translated
@@ -527,6 +573,7 @@ $ diff <(jq -S 'keys' en.json) <(jq -S 'keys' zh.json)
 **Micro-Optimization Found:**
 
 **Lines 39-40, 66-67:**
+
 ```typescript
 setShowSuccess(true)
 setTimeout(() => setShowSuccess(false), 3000)
@@ -535,6 +582,7 @@ setTimeout(() => setShowSuccess(false), 3000)
 **Issue:** If component unmounts before timeout completes, this could cause a React warning about setting state on unmounted component.
 
 **Impact:**
+
 - **Very low risk** - only occurs on successful save
 - User unlikely to navigate away during 3-second success message
 - No memory leak in practice
@@ -543,6 +591,7 @@ setTimeout(() => setShowSuccess(false), 3000)
 **Severity:** MICRO-OPTIMIZATION (not critical)
 
 **Optional Improvement:**
+
 ```typescript
 React.useEffect(() => {
   if (!showSuccess) return
@@ -566,12 +615,14 @@ setShowSuccess(true)
 **Status:** ✅ EXCELLENT
 
 **Reviewed:**
+
 - Client component conversion ✅ (Fixed)
 - Translation usage ✅ (Fixed)
 - Component structure ✅
 - Tab implementation ✅
 
 **Verification:**
+
 - ✅ `'use client'` directive present
 - ✅ `useI18n` hook imported and used
 - ✅ All strings use `t()` function
@@ -588,11 +639,13 @@ setShowSuccess(true)
 **Status:** ✅ EXCELLENT
 
 **Reviewed:**
+
 - Provider composition ✅
 - Nesting order ✅
 - Development tools ✅
 
 **Verification:**
+
 - ✅ Correct nesting: QueryClientProvider → I18nProvider
 - ✅ I18nProvider depends on QueryClient (for usePreferences)
 - ✅ ReactQueryDevtools only in development
@@ -607,11 +660,13 @@ setShowSuccess(true)
 **Status:** ✅ EXCELLENT
 
 **Reviewed:**
+
 - Export structure ✅
 - Type exports ✅
 - Organization ✅
 
 **Verification:**
+
 - ✅ `usePreferences` exported
 - ✅ `UserPreference` type exported
 - ✅ Proper phase organization
@@ -626,9 +681,11 @@ setShowSuccess(true)
 **Status:** ✅ EXCELLENT
 
 **Reviewed:**
+
 - Component exports ✅
 
 **Verification:**
+
 - ✅ `LanguageSettings` exported
 - ✅ `QuotaDetails` exported
 - ✅ Clean barrel export pattern
@@ -642,6 +699,7 @@ setShowSuccess(true)
 ### Type Safety ✅
 
 **Verification:**
+
 ```typescript
 // All locale types are consistently 'en' | 'zh':
 - src/lib/i18n/index.ts: type Locale = 'en' | 'zh'
@@ -655,6 +713,7 @@ setShowSuccess(true)
 ### Database Schema ✅
 
 **Verification:**
+
 ```prisma
 model UserPreference {
   id            String   @id @default(cuid())
@@ -670,6 +729,7 @@ model UserPreference {
 ```
 
 ✅ **Schema matches implementation:**
+
 - ✅ Both locales default to 'en'
 - ✅ Cascade delete on user deletion
 - ✅ Unique constraint on userId
@@ -678,6 +738,7 @@ model UserPreference {
 ### Security ✅
 
 **Verification:**
+
 - ✅ All API routes use `requireAuth()`
 - ✅ User preferences scoped to authenticated user
 - ✅ No cross-user access possible
@@ -691,6 +752,7 @@ model UserPreference {
 ### Performance ✅
 
 **Verification:**
+
 - ✅ React Query caching (5min staleTime, 10min gcTime)
 - ✅ Optimistic updates for instant feedback
 - ✅ i18n instance created once (Fixed)
@@ -703,6 +765,7 @@ model UserPreference {
 ### Accessibility ✅
 
 **Verification:**
+
 - ✅ All form controls have `aria-label` attributes
 - ✅ Labels properly associated with inputs
 - ✅ Keyboard navigation works
@@ -716,6 +779,7 @@ model UserPreference {
 ### Error Handling ✅
 
 **Verification:**
+
 - ✅ API errors caught and handled
 - ✅ User-friendly error messages
 - ✅ Proper HTTP status codes
@@ -728,6 +792,7 @@ model UserPreference {
 ### Edge Cases ✅
 
 **Verification:**
+
 - ✅ Missing preferences (creates defaults)
 - ✅ Missing translation keys (fallback chain)
 - ✅ Concurrent preference updates (handled by React Query)
@@ -742,12 +807,15 @@ model UserPreference {
 ## Issues Summary
 
 ### Critical Issues (0)
+
 None found. ✅
 
 ### Major Issues (0)
+
 All 2 major issues from Iteration 1 have been fixed. ✅
 
 ### Minor Issues (0)
+
 All 6 minor issues from Iteration 1 have been fixed. ✅
 
 ### Micro-Optimizations (2) - OPTIONAL
@@ -768,17 +836,17 @@ All 6 minor issues from Iteration 1 have been fixed. ✅
 
 ## Comparison: Iteration 1 vs Iteration 2
 
-| Metric | Iteration 1 | Iteration 2 | Status |
-|--------|-------------|-------------|---------|
-| Critical Issues | 0 | 0 | ✅ Same |
-| Major Issues | 2 | 0 | ✅ Fixed |
-| Minor Issues | 6 | 0 | ✅ Fixed |
-| Micro-Optimizations | N/A | 2 | ⚠️ Optional |
-| Production Ready | No | **YES** | ✅ Improved |
-| Test Coverage | Excellent | Excellent | ✅ Same |
-| Security | Good | Excellent | ✅ Improved |
-| Performance | Good | Excellent | ✅ Improved |
-| Accessibility | Good | Excellent | ✅ Improved |
+| Metric              | Iteration 1 | Iteration 2 | Status      |
+| ------------------- | ----------- | ----------- | ----------- |
+| Critical Issues     | 0           | 0           | ✅ Same     |
+| Major Issues        | 2           | 0           | ✅ Fixed    |
+| Minor Issues        | 6           | 0           | ✅ Fixed    |
+| Micro-Optimizations | N/A         | 2           | ⚠️ Optional |
+| Production Ready    | No          | **YES**     | ✅ Improved |
+| Test Coverage       | Excellent   | Excellent   | ✅ Same     |
+| Security            | Good        | Excellent   | ✅ Improved |
+| Performance         | Good        | Excellent   | ✅ Improved |
+| Accessibility       | Good        | Excellent   | ✅ Improved |
 
 ---
 
@@ -790,17 +858,17 @@ All 6 minor issues from Iteration 1 have been fixed. ✅
 
 ### Quality Ratings
 
-| Category | Rating | Notes |
-|----------|--------|-------|
-| Code Quality | ⭐⭐⭐⭐⭐ | Excellent |
-| Type Safety | ⭐⭐⭐⭐⭐ | Excellent |
-| Security | ⭐⭐⭐⭐⭐ | Excellent |
-| Performance | ⭐⭐⭐⭐⭐ | Excellent |
-| Accessibility | ⭐⭐⭐⭐⭐ | Excellent |
-| Error Handling | ⭐⭐⭐⭐⭐ | Excellent |
-| Test Coverage | ⭐⭐⭐⭐⭐ | Excellent |
-| Documentation | ⭐⭐⭐⭐⭐ | Excellent |
-| **Overall** | **⭐⭐⭐⭐⭐** | **Excellent** |
+| Category       | Rating         | Notes         |
+| -------------- | -------------- | ------------- |
+| Code Quality   | ⭐⭐⭐⭐⭐     | Excellent     |
+| Type Safety    | ⭐⭐⭐⭐⭐     | Excellent     |
+| Security       | ⭐⭐⭐⭐⭐     | Excellent     |
+| Performance    | ⭐⭐⭐⭐⭐     | Excellent     |
+| Accessibility  | ⭐⭐⭐⭐⭐     | Excellent     |
+| Error Handling | ⭐⭐⭐⭐⭐     | Excellent     |
+| Test Coverage  | ⭐⭐⭐⭐⭐     | Excellent     |
+| Documentation  | ⭐⭐⭐⭐⭐     | Excellent     |
+| **Overall**    | **⭐⭐⭐⭐⭐** | **Excellent** |
 
 ### Strengths
 
@@ -854,10 +922,12 @@ The Phase 6 User Settings implementation is **production-ready** and can be merg
 ## Summary of Fixes Applied
 
 ### Major Fixes (2)
+
 1. ✅ Fixed i18n instance recreation issue
 2. ✅ Fixed blank screen during preferences loading
 
 ### Minor Fixes (6)
+
 3. ✅ Added CSRF token to preference updates
 4. ✅ Translated error message in language-settings
 5. ✅ Translated card description in language-settings
@@ -866,6 +936,7 @@ The Phase 6 User Settings implementation is **production-ready** and can be merg
 8. ✅ Fixed circular dependency in i18n context useEffect
 
 ### Quality Improvements
+
 - ✅ Security enhanced with CSRF protection
 - ✅ UX improved with no blank screen
 - ✅ Performance optimized (no unnecessary re-creation)
@@ -879,6 +950,7 @@ The Phase 6 User Settings implementation is **production-ready** and can be merg
 The Phase 6 User Settings implementation has successfully passed the second iteration code review. All issues identified in Iteration 1 have been properly addressed, and the code now meets production quality standards.
 
 **Key Achievements:**
+
 - ✅ 8/8 issues from Iteration 1 fixed correctly
 - ✅ 0 new critical or major issues introduced
 - ✅ 2 optional micro-optimizations identified
@@ -899,18 +971,18 @@ The implementation demonstrates high-quality software engineering practices and 
 
 ## Appendix: File-by-File Summary
 
-| # | File | Status | Issues Fixed | New Issues |
-|---|------|--------|--------------|------------|
-| 1 | `/src/app/api/preferences/route.ts` | ✅ EXCELLENT | 0 | 0 |
-| 2 | `/src/hooks/use-preferences.ts` | ✅ EXCELLENT | 1 (CSRF) | 0 |
-| 3 | `/src/lib/i18n/index.ts` | ✅ EXCELLENT | 0 | 0 |
-| 4 | `/src/lib/i18n/context.tsx` | ✅ EXCELLENT | 3 (i18n, loading, deps) | 1 (optional) |
-| 5 | `/src/lib/i18n/translations/en.json` | ✅ EXCELLENT | 0 (keys added) | 0 |
-| 6 | `/src/lib/i18n/translations/zh.json` | ✅ EXCELLENT | 0 (keys added) | 0 |
-| 7 | `/src/components/settings/language-settings.tsx` | ✅ EXCELLENT | 3 (translations) | 1 (optional) |
-| 8 | `/src/app/(main)/settings/page.tsx` | ✅ EXCELLENT | 1 (i18n) | 0 |
-| 9 | `/src/app/providers.tsx` | ✅ EXCELLENT | 0 | 0 |
-| 10 | `/src/hooks/index.ts` | ✅ EXCELLENT | 0 | 0 |
-| 11 | `/src/components/settings/index.ts` | ✅ EXCELLENT | 0 | 0 |
+| #   | File                                             | Status       | Issues Fixed            | New Issues   |
+| --- | ------------------------------------------------ | ------------ | ----------------------- | ------------ |
+| 1   | `/src/app/api/preferences/route.ts`              | ✅ EXCELLENT | 0                       | 0            |
+| 2   | `/src/hooks/use-preferences.ts`                  | ✅ EXCELLENT | 1 (CSRF)                | 0            |
+| 3   | `/src/lib/i18n/index.ts`                         | ✅ EXCELLENT | 0                       | 0            |
+| 4   | `/src/lib/i18n/context.tsx`                      | ✅ EXCELLENT | 3 (i18n, loading, deps) | 1 (optional) |
+| 5   | `/src/lib/i18n/translations/en.json`             | ✅ EXCELLENT | 0 (keys added)          | 0            |
+| 6   | `/src/lib/i18n/translations/zh.json`             | ✅ EXCELLENT | 0 (keys added)          | 0            |
+| 7   | `/src/components/settings/language-settings.tsx` | ✅ EXCELLENT | 3 (translations)        | 1 (optional) |
+| 8   | `/src/app/(main)/settings/page.tsx`              | ✅ EXCELLENT | 1 (i18n)                | 0            |
+| 9   | `/src/app/providers.tsx`                         | ✅ EXCELLENT | 0                       | 0            |
+| 10  | `/src/hooks/index.ts`                            | ✅ EXCELLENT | 0                       | 0            |
+| 11  | `/src/components/settings/index.ts`              | ✅ EXCELLENT | 0                       | 0            |
 
 **Total:** 11 files reviewed, 8 issues fixed, 0 critical issues, 2 optional improvements

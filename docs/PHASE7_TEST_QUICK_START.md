@@ -37,6 +37,7 @@ tests/
 ## Quick Commands
 
 ### Run All Phase 7 Tests
+
 ```bash
 # All unit and API tests
 npm run test -- tests/lib/admin-auth.test.ts tests/api/admin tests/components/admin
@@ -78,6 +79,7 @@ npm run test:e2e tests/e2e/admin-login.spec.ts
 ```
 
 ### Watch Mode (Development)
+
 ```bash
 # Watch all admin tests
 npm run test -- --watch tests/lib/admin-auth.test.ts tests/api/admin tests/components/admin
@@ -87,6 +89,7 @@ npm run test -- --watch tests/api/admin/login.test.ts
 ```
 
 ### Coverage Reports
+
 ```bash
 # Run with coverage
 npm run test -- --coverage tests/lib/admin-auth.test.ts tests/api/admin tests/components/admin
@@ -100,23 +103,29 @@ open coverage/index.html
 ## Test Execution Order (Recommended for TDD)
 
 ### Step 1: Unit Tests First
+
 ```bash
 npm run test tests/lib/admin-auth.test.ts
 ```
+
 **Implement**: `src/lib/admin-auth.ts`
 
 ### Step 2: API Tests (Core Auth)
+
 ```bash
 npm run test tests/api/admin/login.test.ts
 npm run test tests/api/admin/logout.test.ts
 npm run test tests/api/admin/auth.test.ts
 ```
+
 **Implement**:
+
 - `src/app/api/admin/login/route.ts`
 - `src/app/api/admin/logout/route.ts`
 - `src/app/api/admin/auth/route.ts`
 
 ### Step 3: API Tests (Monitoring)
+
 ```bash
 npm run test tests/api/admin/stats.test.ts
 npm run test tests/api/admin/access-stats.test.ts
@@ -124,28 +133,35 @@ npm run test tests/api/admin/cost.test.ts
 npm run test tests/api/admin/cost-mathpix.test.ts
 npm run test tests/api/admin/workers.test.ts
 ```
+
 **Implement**: Dashboard stats and monitoring endpoints
 
 ### Step 4: API Tests (User Management)
+
 ```bash
 npm run test tests/api/admin/users.test.ts
 npm run test tests/api/admin/users-quota.test.ts
 npm run test tests/api/admin/users-files.test.ts
 ```
+
 **Implement**: User management endpoints
 
 ### Step 5: Component Tests
+
 ```bash
 npm run test tests/components/admin/admin-login-form.test.tsx
 ```
+
 **Implement**: `src/components/admin/admin-login-form.tsx`
 
 ### Step 6: E2E Tests
+
 ```bash
 npm run test:e2e tests/e2e/admin-login.spec.ts
 npm run test:e2e tests/e2e/admin-dashboard.spec.ts
 npm run test:e2e tests/e2e/admin-users.spec.ts
 ```
+
 **Implement**: Complete pages and flows
 
 ---
@@ -153,6 +169,7 @@ npm run test:e2e tests/e2e/admin-users.spec.ts
 ## Expected Test Results
 
 ### Before Implementation (All Red ❌)
+
 ```
  ❌ tests/lib/admin-auth.test.ts (40 tests failed)
  ❌ tests/api/admin/login.test.ts (50 tests failed)
@@ -161,6 +178,7 @@ npm run test:e2e tests/e2e/admin-users.spec.ts
 ```
 
 ### During Implementation (Mixed)
+
 ```
  ✅ tests/lib/admin-auth.test.ts (40 tests passed)
  ⚠️  tests/api/admin/login.test.ts (25 passed, 25 failed)
@@ -169,6 +187,7 @@ npm run test:e2e tests/e2e/admin-users.spec.ts
 ```
 
 ### After Implementation (All Green ✅)
+
 ```
  ✅ tests/lib/admin-auth.test.ts (40 tests passed)
  ✅ tests/api/admin/login.test.ts (50 tests passed)
@@ -183,26 +202,31 @@ npm run test:e2e tests/e2e/admin-users.spec.ts
 ## Debugging Failed Tests
 
 ### View Detailed Error Messages
+
 ```bash
 npm run test tests/api/admin/login.test.ts -- --reporter=verbose
 ```
 
 ### Run Single Test Case
+
 ```bash
 npm run test tests/api/admin/login.test.ts -- -t "should login with correct credentials"
 ```
 
 ### Debug with Node Inspector
+
 ```bash
 node --inspect-brk node_modules/.bin/vitest tests/api/admin/login.test.ts
 ```
 
 ### E2E Debug Mode
+
 ```bash
 npm run test:e2e tests/e2e/admin-login.spec.ts -- --debug
 ```
 
 ### E2E Headed Mode (see browser)
+
 ```bash
 npm run test:e2e tests/e2e/admin-login.spec.ts -- --headed
 ```
@@ -212,7 +236,9 @@ npm run test:e2e tests/e2e/admin-login.spec.ts -- --headed
 ## Common Issues and Solutions
 
 ### Issue: Tests can't find modules
+
 **Solution**: Check path aliases in `tsconfig.json`
+
 ```json
 {
   "compilerOptions": {
@@ -224,14 +250,18 @@ npm run test:e2e tests/e2e/admin-login.spec.ts -- --headed
 ```
 
 ### Issue: Database errors in tests
+
 **Solution**: Ensure `DATABASE_URL` is set in test environment
+
 ```bash
 export DATABASE_URL="postgresql://test:test@localhost:5432/test"
 npm run test
 ```
 
 ### Issue: E2E tests timing out
+
 **Solution**: Increase timeout in `playwright.config.ts`
+
 ```typescript
 use: {
   timeout: 30000, // 30 seconds
@@ -239,7 +269,9 @@ use: {
 ```
 
 ### Issue: Mock not working
+
 **Solution**: Clear mocks in `beforeEach`
+
 ```typescript
 beforeEach(() => {
   vi.clearAllMocks()
@@ -251,6 +283,7 @@ beforeEach(() => {
 ## Test Data Setup
 
 ### Mock Admin User
+
 ```typescript
 const mockAdmin = {
   id: 'admin-1',
@@ -263,6 +296,7 @@ const mockAdmin = {
 ```
 
 ### Mock Super Admin
+
 ```typescript
 const mockSuperAdmin = {
   id: 'super-1',
@@ -275,6 +309,7 @@ const mockSuperAdmin = {
 ```
 
 ### Admin Session Cookie
+
 ```typescript
 // For E2E tests
 await context.addCookies([
@@ -293,6 +328,7 @@ await context.addCookies([
 ## Continuous Integration
 
 ### GitHub Actions Workflow (Example)
+
 ```yaml
 name: Phase 7 Tests
 

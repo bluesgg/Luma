@@ -18,12 +18,14 @@ This document tracks the comprehensive TDD (Test-Driven Development) tests creat
 **File**: `/Users/samguan/Desktop/project/Luma/tests/api/files/[id]/progress.test.ts`
 
 **Routes Tested**:
+
 - `GET /api/files/:id/progress` - Fetch reading progress
 - `PATCH /api/files/:id/progress` - Update current page
 
 **Test Coverage**:
 
 **GET Endpoint** (90 tests):
+
 - ✅ Happy path: Returns existing progress
 - ✅ Default to page 1 if no progress exists
 - ✅ Authentication (401 for unauthenticated, 403 for unverified)
@@ -33,6 +35,7 @@ This document tracks the comprehensive TDD (Test-Driven Development) tests creat
 - ✅ Edge cases (files without pageCount, different statuses)
 
 **PATCH Endpoint** (120 tests):
+
 - ✅ Update existing progress
 - ✅ Create progress if none exists (upsert)
 - ✅ Update timestamp
@@ -45,10 +48,11 @@ This document tracks the comprehensive TDD (Test-Driven Development) tests creat
 - ✅ Malformed request handling
 
 **Key Validations**:
+
 ```typescript
 // Zod schema (to be implemented)
 const updateProgressSchema = z.object({
-  currentPage: z.number().int().min(1).max(500)
+  currentPage: z.number().int().min(1).max(500),
 })
 ```
 
@@ -63,6 +67,7 @@ const updateProgressSchema = z.object({
 **Test Coverage** (150+ tests):
 
 **Initial Fetch**:
+
 - ✅ Loading state on mount
 - ✅ Fetch progress from API
 - ✅ Skip fetch if fileId undefined/empty
@@ -70,12 +75,14 @@ const updateProgressSchema = z.object({
 - ✅ Return fetched progress data
 
 **Set Page (Immediate Local Update)**:
+
 - ✅ Update local state immediately (no server delay)
 - ✅ Handle multiple rapid updates
 - ✅ Accept valid page range (1-500)
 - ✅ Update UI without blocking
 
 **Debounced Server Update (300ms)**:
+
 - ✅ Debounce API calls to 300ms
 - ✅ Cancel previous calls on rapid updates
 - ✅ Batch rapid page changes
@@ -83,32 +90,38 @@ const updateProgressSchema = z.object({
 - ✅ Only send final value to server
 
 **Saving State**:
+
 - ✅ Set isSaving during save
 - ✅ Clear isSaving after save
 - ✅ Don't block UI while saving
 
 **Error Handling**:
+
 - ✅ Handle fetch failures (network, 404, 403)
 - ✅ Keep local state on save failure
 - ✅ Retry failed saves on next update
 
 **Query Caching**:
+
 - ✅ Cache progress data (30s stale time)
 - ✅ Separate cache per file
 - ✅ Respect stale time
 
 **FileId Changes**:
+
 - ✅ Refetch on fileId change
 - ✅ Reset local state
 - ✅ Cancel pending saves
 
 **Edge Cases**:
+
 - ✅ Undefined/null fileId
 - ✅ Rapid mount/unmount
 - ✅ Cleanup debounce on unmount
 - ✅ TypeScript type safety
 
 **Expected Return Type**:
+
 ```typescript
 {
   currentPage: number
@@ -128,6 +141,7 @@ const updateProgressSchema = z.object({
 **Component Tested**: `<PdfViewer />`
 
 **Props Interface**:
+
 ```typescript
 interface PdfViewerProps {
   url: string
@@ -142,23 +156,27 @@ interface PdfViewerProps {
 **Test Coverage** (200+ tests):
 
 **Loading State**:
+
 - ✅ Display loading skeleton
 - ✅ Show loading indicator
 - ✅ Display loading text
 
 **PDF Rendering**:
+
 - ✅ Render PDF on load success
 - ✅ Call onLoadSuccess with page count
 - ✅ Render initial page (default or specified)
 - ✅ Apply custom className
 
 **Error Handling**:
+
 - ✅ Display error messages (file not found, invalid PDF, network error)
 - ✅ Show password-protected PDF message
 - ✅ Call onLoadError callback
 - ✅ Provide retry option
 
 **Page Navigation**:
+
 - ✅ Next/Previous buttons
 - ✅ Disable buttons at boundaries
 - ✅ Direct page input with validation
@@ -166,6 +184,7 @@ interface PdfViewerProps {
 - ✅ Handle invalid input
 
 **Zoom Controls**:
+
 - ✅ Zoom in/out buttons
 - ✅ Preset zoom levels (50%, 75%, 100%, 125%, 150%, 200%)
 - ✅ Fit to width/page
@@ -173,6 +192,7 @@ interface PdfViewerProps {
 - ✅ Enforce min (50%) and max (200%) limits
 
 **Keyboard Navigation**:
+
 - ✅ Arrow keys (Left/Right for page navigation)
 - ✅ Page Up/Down keys
 - ✅ +/- keys for zoom
@@ -180,26 +200,31 @@ interface PdfViewerProps {
 - ✅ Don't navigate when input focused
 
 **Rotation Controls**:
+
 - ✅ Rotate clockwise/counter-clockwise
 - ✅ Persist rotation across pages
 
 **Fullscreen Mode**:
+
 - ✅ Toggle fullscreen
 - ✅ Show fullscreen controls
 - ✅ Exit with Escape key
 
 **Performance**:
+
 - ✅ Virtualized rendering (only current page)
 - ✅ Load pages on demand
 - ✅ Cleanup resources on unmount
 
 **Accessibility**:
+
 - ✅ ARIA labels on buttons
 - ✅ Keyboard navigation
 - ✅ Screen reader announcements
 - ✅ Focus indicators
 
 **Edge Cases**:
+
 - ✅ Empty URL
 - ✅ Large PDFs (500 pages)
 - ✅ Single page PDF
@@ -219,6 +244,7 @@ interface PdfViewerProps {
 **Test Coverage** (80+ scenarios):
 
 **Reader Page Loading**:
+
 - ✅ Load for valid file ID
 - ✅ Redirect to login if unauthenticated
 - ✅ Show 404 for non-existent file
@@ -227,6 +253,7 @@ interface PdfViewerProps {
 - ✅ Show back button and action buttons
 
 **PDF Display**:
+
 - ✅ Display PDF viewer
 - ✅ Show loading state
 - ✅ Display PDF content after load
@@ -235,6 +262,7 @@ interface PdfViewerProps {
 - ✅ Show password-protected message
 
 **Page Navigation**:
+
 - ✅ Next/Previous buttons
 - ✅ Disable buttons at boundaries
 - ✅ Page input navigation
@@ -243,6 +271,7 @@ interface PdfViewerProps {
 - ✅ URL update on page change (optional)
 
 **Zoom Controls**:
+
 - ✅ Zoom in/out buttons
 - ✅ Keyboard shortcuts (+/-)
 - ✅ Fit to width/page
@@ -251,6 +280,7 @@ interface PdfViewerProps {
 - ✅ Persist zoom across pages
 
 **Progress Persistence**:
+
 - ✅ Load saved progress on page load
 - ✅ Save progress when changing pages (debounced)
 - ✅ Persist across sessions
@@ -259,6 +289,7 @@ interface PdfViewerProps {
 - ✅ Default to page 1 if no progress
 
 **Sidebar Toggle**:
+
 - ✅ Show sidebar by default on desktop
 - ✅ Hide sidebar by default on mobile
 - ✅ Toggle with button
@@ -266,12 +297,14 @@ interface PdfViewerProps {
 - ✅ Persist sidebar state
 
 **Toolbar**:
+
 - ✅ Display at bottom
 - ✅ Show all navigation controls
 - ✅ Show all zoom controls
 - ✅ Show rotation and fullscreen controls
 
 **Responsive Behavior**:
+
 - ✅ Desktop layout (>1024px) - two-panel, sidebar visible
 - ✅ Tablet layout (768-1024px) - two-panel, sidebar hidden
 - ✅ Mobile layout (<768px) - single column, sidebar as slide-over
@@ -279,28 +312,34 @@ interface PdfViewerProps {
 - ✅ Adjust PDF size on resize
 
 **Rotation**:
+
 - ✅ Rotate clockwise
 - ✅ Persist rotation across pages
 
 **Fullscreen Mode**:
+
 - ✅ Enter fullscreen
 - ✅ Exit with Escape
 - ✅ Show fullscreen controls
 
 **Error Handling**:
+
 - ✅ Show error for corrupted PDF
 - ✅ Show retry button
 - ✅ Retry on button click
 
 **Download**:
+
 - ✅ Download PDF with button
 - ✅ Generate download URL on demand
 
 **Start Learning**:
+
 - ✅ Navigate to learning session
 - ✅ Check structure status first
 
 **Accessibility**:
+
 - ✅ Keyboard navigable
 - ✅ Proper ARIA labels
 - ✅ Announce page changes
@@ -312,6 +351,7 @@ interface PdfViewerProps {
 ### API Layer (READER-003)
 
 **Files to Create**:
+
 - [ ] `src/app/api/files/[id]/progress/route.ts`
   - [ ] GET handler with authentication/authorization
   - [ ] PATCH handler with Zod validation
@@ -325,6 +365,7 @@ interface PdfViewerProps {
 ### Hook Layer (READER-004)
 
 **Files to Create**:
+
 - [ ] `src/hooks/use-reading-progress.ts`
   - [ ] TanStack Query for fetching progress
   - [ ] Local state for immediate UI updates
@@ -334,6 +375,7 @@ interface PdfViewerProps {
   - [ ] Stale time: 30 seconds
 
 **Dependencies to Add**:
+
 ```json
 {
   "use-debounce": "^10.0.0"
@@ -343,6 +385,7 @@ interface PdfViewerProps {
 ### Component Layer (READER-001)
 
 **Files to Create**:
+
 - [ ] `src/components/reader/pdf-viewer.tsx`
   - [ ] react-pdf integration
   - [ ] Page navigation controls
@@ -365,6 +408,7 @@ interface PdfViewerProps {
   - [ ] Loading state UI
 
 **Dependencies to Add**:
+
 ```json
 {
   "react-pdf": "^9.0.0"
@@ -372,15 +416,16 @@ interface PdfViewerProps {
 ```
 
 **Worker Configuration**:
+
 ```typescript
 import { pdfjs } from 'react-pdf'
-pdfjs.GlobalWorkerOptions.workerSrc =
-  `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version}/pdf.worker.min.js`
+pdfjs.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version}/pdf.worker.min.js`
 ```
 
 ### Page Layer (READER-002)
 
 **Files to Create**:
+
 - [ ] `src/app/(main)/reader/[fileId]/page.tsx`
   - [ ] Main reader page component
   - [ ] Use useFile hook for file data
@@ -400,6 +445,7 @@ pdfjs.GlobalWorkerOptions.workerSrc =
   - [ ] Responsive (desktop visible, mobile hidden)
 
 **Existing Store to Use**:
+
 - `src/stores/reader-store.ts` (already has scale, rotation, sidebar state)
 
 ---
@@ -407,6 +453,7 @@ pdfjs.GlobalWorkerOptions.workerSrc =
 ## Database Schema Reference
 
 **ReadingProgress Model** (already exists):
+
 ```prisma
 model ReadingProgress {
   id          String   @id @default(cuid())
@@ -430,6 +477,7 @@ model ReadingProgress {
 ## Test Execution
 
 ### Run All Tests
+
 ```bash
 # Run all Phase 8 tests
 npm test -- tests/api/files/\[id\]/progress.test.ts
@@ -442,6 +490,7 @@ npm test -- --grep "READER-"
 ```
 
 ### Expected Initial Result
+
 **All tests should FAIL** because the implementation doesn't exist yet. This is expected in TDD!
 
 ---
@@ -451,27 +500,32 @@ npm test -- --grep "READER-"
 Following TDD principles, implement in this order:
 
 ### Phase 1: API Layer (Bottom-Up)
+
 1. Create progress API route handlers
 2. Run API tests until they pass
 3. Create API client functions
 
 ### Phase 2: Hook Layer
+
 4. Create useReadingProgress hook
 5. Run hook tests until they pass
 6. Verify debouncing and caching
 
 ### Phase 3: Component Layer
+
 7. Add react-pdf dependency
 8. Create PDF viewer component
 9. Run component tests until they pass
 10. Create toolbar and supporting components
 
 ### Phase 4: Page Layer
+
 11. Create reader page
 12. Create header and sidebar
 13. Integrate all components
 
 ### Phase 5: E2E Verification
+
 14. Run E2E tests
 15. Fix any integration issues
 16. Verify all user flows
@@ -480,19 +534,20 @@ Following TDD principles, implement in this order:
 
 ## Test Statistics
 
-| Category | File | Tests | Lines |
-|----------|------|-------|-------|
-| API Tests | progress.test.ts | ~210 | ~1,100 |
-| Hook Tests | use-reading-progress.test.ts | ~150 | ~1,000 |
-| Component Tests | pdf-viewer.test.tsx | ~200 | ~1,200 |
-| E2E Tests | reader.spec.ts | ~80 | ~800 |
-| **Total** | **4 files** | **~640 tests** | **~4,100 lines** |
+| Category        | File                         | Tests          | Lines            |
+| --------------- | ---------------------------- | -------------- | ---------------- |
+| API Tests       | progress.test.ts             | ~210           | ~1,100           |
+| Hook Tests      | use-reading-progress.test.ts | ~150           | ~1,000           |
+| Component Tests | pdf-viewer.test.tsx          | ~200           | ~1,200           |
+| E2E Tests       | reader.spec.ts               | ~80            | ~800             |
+| **Total**       | **4 files**                  | **~640 tests** | **~4,100 lines** |
 
 ---
 
 ## Key Features Tested
 
 ### Reading Progress API
+
 - ✅ GET returns current page or default 1
 - ✅ PATCH creates/updates with upsert
 - ✅ Validation: currentPage between 1-500
@@ -500,6 +555,7 @@ Following TDD principles, implement in this order:
 - ✅ Handles concurrent updates
 
 ### useReadingProgress Hook
+
 - ✅ Immediate local updates (no lag)
 - ✅ Debounced server updates (300ms)
 - ✅ Separate loading/saving states
@@ -507,6 +563,7 @@ Following TDD principles, implement in this order:
 - ✅ Query caching (30s stale time)
 
 ### PDF Viewer Component
+
 - ✅ Page navigation (buttons, keyboard, input)
 - ✅ Zoom controls (50%-200%)
 - ✅ Rotation and fullscreen
@@ -515,6 +572,7 @@ Following TDD principles, implement in this order:
 - ✅ Accessibility (ARIA, keyboard)
 
 ### Reader Page E2E
+
 - ✅ Complete user journey
 - ✅ Progress persistence across sessions
 - ✅ Responsive layout (desktop/tablet/mobile)

@@ -13,12 +13,14 @@ Successfully implemented the complete PDF Reader module for the Luma project fol
 ### 1. API Layer
 
 #### `/src/app/api/files/[id]/progress/route.ts`
+
 - **GET handler**: Returns current reading progress for a file (defaults to page 1 if no progress exists)
 - **PATCH handler**: Updates current page with upsert pattern
 - Includes authentication, authorization, and validation
 - Returns progress data with `currentPage` and `updatedAt` fields
 
 #### `/src/lib/api/progress.ts`
+
 - `getProgress(fileId: string)`: Fetches reading progress
 - `updateProgress(fileId: string, currentPage: number)`: Updates reading progress
 - Follows existing API client patterns using `apiClient` helper
@@ -26,6 +28,7 @@ Successfully implemented the complete PDF Reader module for the Luma project fol
 ### 2. Hooks Layer
 
 #### `/src/hooks/use-reading-progress.ts`
+
 - TanStack Query hook for reading progress management
 - Features:
   - Fetches initial progress on mount
@@ -38,6 +41,7 @@ Successfully implemented the complete PDF Reader module for the Luma project fol
 ### 3. Components Layer
 
 #### `/src/components/reader/pdf-toolbar.tsx`
+
 - Page navigation controls (prev/next buttons, direct page input)
 - Zoom controls (in/out buttons, percentage selector)
   - Zoom levels: 50%, 75%, 100%, 125%, 150%, 200%
@@ -46,6 +50,7 @@ Successfully implemented the complete PDF Reader module for the Luma project fol
 - Full keyboard accessibility
 
 #### `/src/components/reader/pdf-viewer.tsx`
+
 - Uses `react-pdf` library for PDF rendering
 - Features:
   - Virtualized single-page rendering for performance
@@ -58,6 +63,7 @@ Successfully implemented the complete PDF Reader module for the Luma project fol
   - Handles password-protected and corrupted PDFs
 
 #### `/src/components/reader/reader-header.tsx`
+
 - Back navigation to files list
 - File name display
 - Action buttons:
@@ -65,6 +71,7 @@ Successfully implemented the complete PDF Reader module for the Luma project fol
   - Start Learning button (navigates to learning session, disabled if structure not ready)
 
 #### `/src/components/reader/explanation-sidebar.tsx`
+
 - Collapsible right sidebar (320px wide on desktop)
 - Responsive design:
   - Desktop: Fixed sidebar panel
@@ -74,6 +81,7 @@ Successfully implemented the complete PDF Reader module for the Luma project fol
 ### 4. Page Layer
 
 #### `/src/app/(main)/reader/[fileId]/page.tsx`
+
 - Main reader page with two-panel layout
 - Features:
   - Integrates all reader components
@@ -88,11 +96,13 @@ Successfully implemented the complete PDF Reader module for the Luma project fol
 ### 5. Exports
 
 #### `/src/hooks/index.ts`
+
 - Added exports for `useReadingProgress` and `progressKeys`
 
 ## Dependencies Added
 
 Updated `package.json` with:
+
 - `react-pdf`: ^9.0.0 (PDF rendering library)
 - `use-debounce`: ^10.0.0 (Debounced callbacks)
 
@@ -101,22 +111,26 @@ Updated `package.json` with:
 ## Key Implementation Details
 
 ### 1. Authentication & Authorization
+
 - Uses `requireAuth()` from `/src/lib/auth.ts`
 - Validates file ownership through course relationship
 - Returns appropriate error codes (401, 403, 404)
 
 ### 2. Reading Progress Tracking
+
 - Database: Uses existing `ReadingProgress` model with `userId_fileId` unique constraint
 - Upsert pattern ensures no duplicate records
 - Debounced updates reduce server load during rapid page changes
 - Local state provides immediate UI feedback
 
 ### 3. PDF.js Configuration
+
 - Worker loaded from CDN: `cdnjs.cloudflare.com/ajax/libs/pdf.js/{version}/pdf.worker.min.js`
 - Text layer and annotation layer enabled
 - Proper TypeScript types from `react-pdf`
 
 ### 4. State Management
+
 - Global reader state: `useReaderStore` (Zustand)
   - Scale (zoom level)
   - Rotation (0, 90, 180, 270 degrees)
@@ -127,17 +141,20 @@ Updated `package.json` with:
   - Automatic cache invalidation
 
 ### 5. Responsive Design
+
 - **Desktop (>1024px)**: Two-panel layout, sidebar visible by default
 - **Tablet (768-1024px)**: Two-panel layout, sidebar hidden by default
 - **Mobile (<768px)**: Single column, sidebar as slide-over sheet
 - Dynamic mobile detection with window resize listener
 
 ### 6. Keyboard Shortcuts
+
 - `ArrowRight` / `PageDown`: Next page
 - `ArrowLeft` / `PageUp`: Previous page
 - Shortcuts disabled when input elements are focused
 
 ### 7. Error Handling
+
 - File not found (404)
 - Permission denied (403)
 - Invalid PDF format
@@ -148,6 +165,7 @@ Updated `package.json` with:
 ## Integration Points
 
 ### Existing Systems
+
 1. **File Management**: Uses `useFile` hook to fetch file metadata
 2. **Download System**: Uses `useDownloadUrl` to get presigned URLs
 3. **Authentication**: Leverages existing auth middleware
@@ -156,7 +174,9 @@ Updated `package.json` with:
 6. **UI Components**: Uses existing shadcn/ui components
 
 ### Database Schema
+
 - Uses existing `ReadingProgress` model:
+
   ```prisma
   model ReadingProgress {
     id          String   @id @default(cuid())
@@ -178,11 +198,13 @@ Updated `package.json` with:
 All implementation aligns with the TDD tests:
 
 ### API Tests (`tests/api/files/[id]/progress.test.ts`)
+
 - ✅ GET endpoint: authentication, authorization, response format
 - ✅ PATCH endpoint: validation, upsert behavior, concurrency handling
 - ✅ Edge cases: invalid IDs, missing fields, boundary values
 
 ### Hook Tests (`tests/hooks/use-reading-progress.test.ts`)
+
 - ✅ Query fetching and caching
 - ✅ Debounced updates (300ms)
 - ✅ Local state management
@@ -190,6 +212,7 @@ All implementation aligns with the TDD tests:
 - ✅ FileId changes and cleanup
 
 ### Component Tests (`tests/components/reader/pdf-viewer.test.tsx`)
+
 - ✅ Loading states
 - ✅ Page navigation
 - ✅ Zoom controls
@@ -198,6 +221,7 @@ All implementation aligns with the TDD tests:
 - ✅ Accessibility features
 
 ### E2E Tests (`tests/e2e/reader.spec.ts`)
+
 - ✅ Page load with authentication
 - ✅ Page navigation and keyboard shortcuts
 - ✅ Zoom controls and persistence
@@ -208,17 +232,20 @@ All implementation aligns with the TDD tests:
 ## Next Steps
 
 1. **Install Dependencies**
+
    ```bash
    npm install
    ```
 
 2. **Run Tests**
+
    ```bash
    npm test                    # Unit and integration tests
    npm run test:e2e           # End-to-end tests
    ```
 
 3. **Start Development Server**
+
    ```bash
    npm run dev
    ```
@@ -230,6 +257,7 @@ All implementation aligns with the TDD tests:
 ## Future Enhancements
 
 The implementation provides a solid foundation for:
+
 1. **AI Explanations**: Populate sidebar with page summaries and key concepts
 2. **Annotations**: Add highlighting and note-taking features
 3. **Search**: Implement full-text search within PDFs
@@ -252,12 +280,14 @@ The implementation provides a solid foundation for:
 ## Validation Rules
 
 ### API Validation
+
 - `currentPage`: Integer between 1 and 500 (inclusive)
 - `fileId`: Valid CUID format
 - Must be authenticated and email verified
 - Must own the file through course ownership
 
 ### UI Validation
+
 - Page input: Clamped to valid range (1 to numPages)
 - Zoom: Limited to 50%-200%
 - Rotation: Modulo 360 degrees
