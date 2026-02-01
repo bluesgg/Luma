@@ -17,34 +17,7 @@ export const ERROR_CODES = {
   COURSE_NOT_FOUND: 'COURSE_NOT_FOUND',
   COURSE_FORBIDDEN: 'COURSE_FORBIDDEN',
 
-  // File Management
-  FILE_TOO_LARGE: 'FILE_TOO_LARGE',
-  FILE_TOO_MANY_PAGES: 'FILE_TOO_MANY_PAGES',
-  FILE_DUPLICATE_NAME: 'FILE_DUPLICATE_NAME',
-  FILE_COUNT_LIMIT_REACHED: 'FILE_COUNT_LIMIT_REACHED',
-  FILE_NOT_FOUND: 'FILE_NOT_FOUND',
-  FILE_FORBIDDEN: 'FILE_FORBIDDEN',
-  FILE_INVALID_TYPE: 'FILE_INVALID_TYPE',
-  STORAGE_LIMIT_REACHED: 'STORAGE_LIMIT_REACHED',
-
-  // AI Tutor
-  TUTOR_STRUCTURE_NOT_READY: 'TUTOR_STRUCTURE_NOT_READY',
-  TUTOR_STRUCTURE_FAILED: 'TUTOR_STRUCTURE_FAILED',
-  TUTOR_SESSION_NOT_FOUND: 'TUTOR_SESSION_NOT_FOUND',
-  TUTOR_SESSION_FORBIDDEN: 'TUTOR_SESSION_FORBIDDEN',
-  TUTOR_QUOTA_EXCEEDED: 'TUTOR_QUOTA_EXCEEDED',
-
-  // Learning Sessions
-  SESSION_NOT_FOUND: 'SESSION_NOT_FOUND',
-  SESSION_FORBIDDEN: 'SESSION_FORBIDDEN',
-  SESSION_INVALID_STATE: 'SESSION_INVALID_STATE',
-  SESSION_INVALID_PHASE: 'SESSION_INVALID_PHASE',
-  TOPIC_NOT_FOUND: 'TOPIC_NOT_FOUND',
-  QUESTION_NOT_FOUND: 'QUESTION_NOT_FOUND',
-  QUESTION_ALREADY_CORRECT: 'QUESTION_ALREADY_CORRECT',
-  SKIP_NOT_ALLOWED: 'SKIP_NOT_ALLOWED',
-  PROGRESS_NOT_FOUND: 'PROGRESS_NOT_FOUND',
-  AI_GENERATION_FAILED: 'AI_GENERATION_FAILED',
+  // Quota
   QUOTA_EXCEEDED: 'QUOTA_EXCEEDED',
 
   // General
@@ -53,40 +26,6 @@ export const ERROR_CODES = {
   NOT_FOUND: 'NOT_FOUND',
   RATE_LIMIT_EXCEEDED: 'RATE_LIMIT_EXCEEDED',
   CSRF_TOKEN_INVALID: 'CSRF_TOKEN_INVALID',
-} as const
-
-// File Limits
-export const FILE_LIMITS = {
-  MAX_FILE_SIZE: 200 * 1024 * 1024, // 200MB
-  MAX_PAGE_COUNT: 500,
-  MAX_FILES_PER_COURSE: 30,
-  MAX_STORAGE_PER_USER: 5 * 1024 * 1024 * 1024, // 5GB
-  ALLOWED_TYPES: ['application/pdf'],
-  UPLOAD_URL_EXPIRY: 3600, // 1 hour in seconds
-  DOWNLOAD_URL_EXPIRY: 3600, // 1 hour in seconds
-  MAX_CONCURRENT_UPLOADS: 3,
-} as const
-
-// File Status
-export const FILE_STATUS = {
-  UPLOADING: 'UPLOADING',
-  PROCESSING: 'PROCESSING',
-  READY: 'READY',
-  FAILED: 'FAILED',
-} as const
-
-// Structure Status
-export const STRUCTURE_STATUS = {
-  PENDING: 'PENDING',
-  PROCESSING: 'PROCESSING',
-  READY: 'READY',
-  FAILED: 'FAILED',
-} as const
-
-// PDF Processing
-export const PDF_CONFIG = {
-  SCANNED_PDF_TEXT_THRESHOLD: 0.7,
-  MIN_TEXT_PER_PAGE: 100,
 } as const
 
 // Course Limits
@@ -113,10 +52,6 @@ export const RATE_LIMITS = {
     windowMs: 60 * 1000, // 1 minute
     maxRequests: 100,
   },
-  AI: {
-    windowMs: 60 * 1000, // 1 minute
-    maxRequests: 20,
-  },
   EMAIL: {
     windowMs: 15 * 60 * 1000, // 15 minutes
     maxRequests: 5,
@@ -132,15 +67,6 @@ export const SECURITY = {
   SESSION_COOKIE_NAME: 'luma-session',
   SESSION_MAX_AGE_DAYS: 7,
   SESSION_MAX_AGE_REMEMBER_DAYS: 30,
-} as const
-
-// AI Configuration
-export const AI_CONFIG = {
-  OPENROUTER_MODEL: 'anthropic/claude-3.5-sonnet',
-  MAX_TOKENS: 4096,
-  TEMPERATURE: 0.7,
-  STRUCTURE_EXTRACTION_TIMEOUT: 5 * 60 * 1000, // 5 minutes
-  BATCH_SIZE: 120, // pages per batch
 } as const
 
 // Pagination
@@ -161,20 +87,4 @@ export const ADMIN_ERROR_CODES = {
   ADMIN_FORBIDDEN: 'ADMIN_FORBIDDEN',
   ADMIN_DISABLED: 'ADMIN_DISABLED',
   ADMIN_INVALID_CREDENTIALS: 'ADMIN_INVALID_CREDENTIALS',
-} as const
-
-// API Response Messages
-export const MESSAGES = {
-  SUCCESS: {
-    CREATED: 'Resource created successfully',
-    UPDATED: 'Resource updated successfully',
-    DELETED: 'Resource deleted successfully',
-  },
-  ERROR: {
-    VALIDATION: 'Validation failed',
-    UNAUTHORIZED: 'Unauthorized access',
-    FORBIDDEN: 'Access forbidden',
-    NOT_FOUND: 'Resource not found',
-    INTERNAL: 'Internal server error',
-  },
 } as const

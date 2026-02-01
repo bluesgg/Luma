@@ -3,6 +3,7 @@
 // =============================================================================
 
 import { vi, beforeEach } from 'vitest'
+import '@testing-library/jest-dom/vitest'
 
 // Mock environment variables
 ;(process.env as any).NODE_ENV = 'test'

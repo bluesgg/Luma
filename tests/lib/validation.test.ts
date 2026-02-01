@@ -43,25 +43,6 @@ const courseSchema = z.object({
   term: z.string().max(50, 'Term must be at most 50 characters').optional(),
 })
 
-// File upload schema
-const fileUploadSchema = z.object({
-  courseId: z.string().min(1, 'Course ID is required'),
-  fileName: z
-    .string()
-    .min(1, 'File name is required')
-    .max(255, 'File name must be at most 255 characters')
-    .regex(/\.pdf$/i, 'Only PDF files are allowed'),
-  fileSize: z
-    .number()
-    .positive('File size must be positive')
-    .max(200 * 1024 * 1024, 'File size must not exceed 200MB'),
-  pageCount: z
-    .number()
-    .int('Page count must be an integer')
-    .positive('Page count must be positive')
-    .max(500, 'Page count must not exceed 500'),
-})
-
 // Pagination schema
 const paginationSchema = z.object({
   page: z.coerce.number().int().positive().default(1),
@@ -71,20 +52,6 @@ const paginationSchema = z.object({
 // ID parameter schema
 const idSchema = z.object({
   id: z.string().min(1, 'ID is required'),
-})
-
-// Query filters schema
-const queryFiltersSchema = z.object({
-  search: z.string().optional(),
-  status: z.enum(['PENDING', 'PROCESSING', 'READY', 'FAILED']).optional(),
-  sortBy: z.enum(['createdAt', 'updatedAt', 'name']).optional(),
-  sortOrder: z.enum(['asc', 'desc']).default('desc'),
-})
-
-// Answer submission schema
-const answerSchema = z.object({
-  questionId: z.string().min(1, 'Question ID is required'),
-  answer: z.string().min(1, 'Answer is required'),
 })
 
 // Preferences schema
@@ -325,80 +292,6 @@ describe('Validation Helpers', () => {
     })
   })
 
-  describe('File Upload Schema', () => {
-    it('should validate correct file upload data', () => {
-      const data = {
-        courseId: 'course-123',
-        fileName: 'lecture-notes.pdf',
-        fileSize: 1024 * 1024, // 1MB
-        pageCount: 10,
-      }
-
-      const result = validateData(fileUploadSchema, data)
-      expect(result.success).toBe(true)
-    })
-
-    it('should reject non-PDF files', () => {
-      const data = {
-        courseId: 'course-123',
-        fileName: 'document.docx',
-        fileSize: 1024 * 1024,
-        pageCount: 10,
-      }
-
-      const result = validateData(fileUploadSchema, data)
-      expect(result.success).toBe(false)
-    })
-
-    it('should accept PDF with uppercase extension', () => {
-      const data = {
-        courseId: 'course-123',
-        fileName: 'document.PDF',
-        fileSize: 1024 * 1024,
-        pageCount: 10,
-      }
-
-      const result = validateData(fileUploadSchema, data)
-      expect(result.success).toBe(true)
-    })
-
-    it('should reject file size over 200MB', () => {
-      const data = {
-        courseId: 'course-123',
-        fileName: 'large.pdf',
-        fileSize: 201 * 1024 * 1024,
-        pageCount: 10,
-      }
-
-      const result = validateData(fileUploadSchema, data)
-      expect(result.success).toBe(false)
-    })
-
-    it('should reject page count over 500', () => {
-      const data = {
-        courseId: 'course-123',
-        fileName: 'large.pdf',
-        fileSize: 1024 * 1024,
-        pageCount: 501,
-      }
-
-      const result = validateData(fileUploadSchema, data)
-      expect(result.success).toBe(false)
-    })
-
-    it('should accept exactly 500 pages', () => {
-      const data = {
-        courseId: 'course-123',
-        fileName: 'large.pdf',
-        fileSize: 1024 * 1024,
-        pageCount: 500,
-      }
-
-      const result = validateData(fileUploadSchema, data)
-      expect(result.success).toBe(true)
-    })
-  })
-
   describe('Pagination Schema', () => {
     it('should validate pagination with defaults', () => {
       const result = validateData(paginationSchema, {})
@@ -464,66 +357,6 @@ describe('Validation Helpers', () => {
 
     it('should reject missing ID', () => {
       const result = validateData(idSchema, {})
-      expect(result.success).toBe(false)
-    })
-  })
-
-  describe('Query Filters Schema', () => {
-    it('should validate with all filters', () => {
-      const data = {
-        search: 'test',
-        status: 'READY',
-        sortBy: 'createdAt',
-        sortOrder: 'asc',
-      }
-
-      const result = validateData(queryFiltersSchema, data)
-      expect(result.success).toBe(true)
-    })
-
-    it('should validate with no filters', () => {
-      const result = validateData(queryFiltersSchema, {})
-      expect(result.success).toBe(true)
-      expect(result.data?.sortOrder).toBe('desc') // default
-    })
-
-    it('should reject invalid status', () => {
-      const data = {
-        status: 'INVALID',
-      }
-
-      const result = validateData(queryFiltersSchema, data)
-      expect(result.success).toBe(false)
-    })
-
-    it('should accept valid status values', () => {
-      const statuses = ['PENDING', 'PROCESSING', 'READY', 'FAILED']
-
-      statuses.forEach((status) => {
-        const result = validateData(queryFiltersSchema, { status })
-        expect(result.success).toBe(true)
-      })
-    })
-  })
-
-  describe('Answer Schema', () => {
-    it('should validate correct answer', () => {
-      const data = {
-        questionId: 'q-123',
-        answer: 'Option A',
-      }
-
-      const result = validateData(answerSchema, data)
-      expect(result.success).toBe(true)
-    })
-
-    it('should reject empty answer', () => {
-      const data = {
-        questionId: 'q-123',
-        answer: '',
-      }
-
-      const result = validateData(answerSchema, data)
       expect(result.success).toBe(false)
     })
   })

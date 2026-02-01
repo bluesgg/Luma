@@ -31,12 +31,10 @@ export async function getAdminSession(): Promise<AdminSession | null> {
       return null
     }
 
-    // Check if admin is disabled
     if (admin.disabledAt) {
       return null
     }
 
-    // Return admin without password hash
     const { passwordHash: _passwordHash, ...adminSession } = admin
     return adminSession
   } catch (error) {
@@ -63,31 +61,18 @@ export async function requireAdmin(): Promise<AdminSession> {
 }
 
 /**
- * Require super admin authentication - throws if not super admin
- */
-export async function requireSuperAdmin(): Promise<AdminSession> {
-  const admin = await requireAdmin()
-
-  if (admin.role !== 'SUPER_ADMIN') {
-    throw new Error(ADMIN_ERROR_CODES.ADMIN_FORBIDDEN)
-  }
-
-  return admin
-}
-
-/**
  * Set admin session cookie
  */
 export async function setAdminSession(adminId: string): Promise<void> {
   const cookieStore = await cookies()
-  const maxAge = ADMIN_SECURITY.SESSION_MAX_AGE_DAYS * 24 * 60 * 60 // Convert days to seconds
+  const maxAge = ADMIN_SECURITY.SESSION_MAX_AGE_DAYS * 24 * 60 * 60
 
   cookieStore.set(ADMIN_SECURITY.SESSION_COOKIE_NAME, adminId, {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
-    sameSite: 'strict', // Use 'strict' for admin sessions for better security
+    sameSite: 'strict',
     maxAge,
-    path: '/admin', // Restrict cookie to admin routes only
+    path: '/admin',
   })
 }
 

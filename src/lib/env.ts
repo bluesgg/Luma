@@ -24,19 +24,7 @@ const envSchema = z.object({
     .string()
     .min(1, 'Supabase service role key is required'),
 
-  // AI Services (optional for Phase 0)
-  OPENROUTER_API_KEY: z.string().optional(),
-  MATHPIX_APP_ID: z.string().optional(),
-  MATHPIX_APP_KEY: z.string().optional(),
-
-  // Cloudflare R2 (optional for Phase 0)
-  R2_ACCOUNT_ID: z.string().optional(),
-  R2_ACCESS_KEY_ID: z.string().optional(),
-  R2_SECRET_ACCESS_KEY: z.string().optional(),
-  R2_BUCKET_NAME: z.string().optional(),
-  R2_PUBLIC_URL: z.string().url().optional(),
-
-  // Trigger.dev (optional for Phase 0)
+  // Trigger.dev (optional)
   TRIGGER_API_KEY: z.string().optional(),
   TRIGGER_API_URL: z.string().url().optional(),
   TRIGGER_SECRET_KEY: z.string().optional(),
@@ -67,7 +55,7 @@ function validateEnv(): Env {
     return envSchema.parse(process.env)
   } catch (error) {
     if (error instanceof z.ZodError) {
-      console.error('❌ Invalid environment variables:')
+      console.error('Invalid environment variables:')
       error.errors.forEach((err) => {
         console.error(`  - ${err.path.join('.')}: ${err.message}`)
       })
@@ -98,8 +86,8 @@ export function checkRequiredServices() {
   }
 
   if (missing.length > 0) {
-    console.warn('⚠️  Missing configuration for:', missing.join(', '))
-    console.warn('⚠️  Some features may not work correctly.')
+    console.warn('Missing configuration for:', missing.join(', '))
+    console.warn('Some features may not work correctly.')
   }
 }
 

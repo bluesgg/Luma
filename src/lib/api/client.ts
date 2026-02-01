@@ -4,7 +4,7 @@
 
 import { getCsrfTokenFromCookie } from '@/lib/csrf'
 
-export type ApiResponse<T> =
+type ApiResponse<T> =
   | {
       success: true
       data: T
@@ -17,7 +17,7 @@ export type ApiResponse<T> =
       }
     }
 
-export class ApiError extends Error {
+class ApiError extends Error {
   constructor(
     public code: string,
     message: string,
@@ -31,16 +31,12 @@ export class ApiError extends Error {
 /**
  * Make an API request with proper error handling and automatic CSRF token inclusion
  */
-export async function apiRequest<T>(
-  url: string,
-  options?: RequestInit
-): Promise<T> {
+async function apiRequest<T>(url: string, options?: RequestInit): Promise<T> {
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
     ...(options?.headers as Record<string, string>),
   }
 
-  // Automatically include CSRF token for mutation requests
   const method = options?.method?.toUpperCase()
   if (
     method === 'POST' ||
@@ -86,20 +82,14 @@ export async function apiRequest<T>(
   return result.data
 }
 
-/**
- * GET request
- */
-export async function get<T>(
+async function get<T>(
   url: string,
   options?: Omit<RequestInit, 'method' | 'body'>
 ): Promise<T> {
   return apiRequest<T>(url, { ...options, method: 'GET' })
 }
 
-/**
- * POST request
- */
-export async function post<T>(
+async function post<T>(
   url: string,
   data?: unknown,
   options?: Omit<RequestInit, 'method' | 'body'>
@@ -111,10 +101,7 @@ export async function post<T>(
   })
 }
 
-/**
- * PATCH request
- */
-export async function patch<T>(
+async function patch<T>(
   url: string,
   data?: unknown,
   options?: Omit<RequestInit, 'method' | 'body'>
@@ -126,10 +113,7 @@ export async function patch<T>(
   })
 }
 
-/**
- * DELETE request
- */
-export async function del<T>(
+async function del<T>(
   url: string,
   options?: Omit<RequestInit, 'method' | 'body'>
 ): Promise<T> {
@@ -137,62 +121,11 @@ export async function del<T>(
 }
 
 /**
- * Upload file with progress tracking
- */
-export async function uploadFile(
-  url: string,
-  file: File,
-  onProgress?: (progress: number) => void
-): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const xhr = new XMLHttpRequest()
-
-    const progressHandler = (event: ProgressEvent) => {
-      if (event.lengthComputable && onProgress) {
-        const progress = (event.loaded / event.total) * 100
-        onProgress(progress)
-      }
-    }
-
-    const loadHandler = () => {
-      cleanup()
-      if (xhr.status >= 200 && xhr.status < 300) {
-        resolve()
-      } else {
-        reject(new Error(`Upload failed with status ${xhr.status}`))
-      }
-    }
-
-    const errorHandler = () => {
-      cleanup()
-      reject(new Error('Upload failed'))
-    }
-
-    const cleanup = () => {
-      xhr.upload.removeEventListener('progress', progressHandler)
-      xhr.removeEventListener('load', loadHandler)
-      xhr.removeEventListener('error', errorHandler)
-    }
-
-    xhr.upload.addEventListener('progress', progressHandler)
-    xhr.addEventListener('load', loadHandler)
-    xhr.addEventListener('error', errorHandler)
-
-    xhr.open('PUT', url)
-    xhr.setRequestHeader('Content-Type', file.type)
-    xhr.send(file)
-  })
-}
-
-/**
  * API client object with convenience methods
- * Export for use in other modules
  */
 export const apiClient = {
   get,
   post,
   patch,
   delete: del,
-  uploadFile,
-  apiRequest,
 }

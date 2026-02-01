@@ -4,5 +4,4 @@
  */
 
 export * from './client'
-export * from './jobs/extract-pdf-structure'
 export * from './jobs/quota-reset'

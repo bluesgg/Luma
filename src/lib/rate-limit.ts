@@ -20,7 +20,7 @@ const store = new Map<string, RateLimitEntry>()
 /**
  * Check if a request should be rate limited
  */
-export async function checkRateLimit(
+async function checkRateLimit(
   key: string,
   config: RateLimitConfig
 ): Promise<{
@@ -28,13 +28,11 @@ export async function checkRateLimit(
   remaining: number
   resetTime: number
 }> {
-  // Trigger periodic cleanup
   maybeCleanup()
 
   const now = Date.now()
   const entry = store.get(key)
 
-  // If no entry or expired, create new one
   if (!entry || now > entry.resetTime) {
     const resetTime = now + config.windowMs
     store.set(key, { count: 1, resetTime })
@@ -46,7 +44,6 @@ export async function checkRateLimit(
     }
   }
 
-  // Check if limit exceeded
   if (entry.count >= config.maxRequests) {
     return {
       allowed: false,
@@ -55,7 +52,6 @@ export async function checkRateLimit(
     }
   }
 
-  // Increment count
   entry.count++
   store.set(key, entry)
 
@@ -81,13 +77,6 @@ export async function apiRateLimit(identifier: string) {
 }
 
 /**
- * Rate limit for AI endpoints
- */
-export async function aiRateLimit(identifier: string) {
-  return checkRateLimit(`ai:${identifier}`, RATE_LIMITS.AI)
-}
-
-/**
  * Rate limit for email sending
  */
 export async function emailRateLimit(identifier: string) {
@@ -95,16 +84,9 @@ export async function emailRateLimit(identifier: string) {
 }
 
 /**
- * Clear rate limit for a key (useful for testing)
+ * Clean up expired entries
  */
-export function clearRateLimit(key: string): void {
-  store.delete(key)
-}
-
-/**
- * Clean up expired entries on-demand
- */
-export function cleanupExpiredEntries(): void {
+function cleanupExpiredEntries(): void {
   const now = Date.now()
   for (const [key, entry] of store.entries()) {
     if (now > entry.resetTime) {
@@ -113,14 +95,9 @@ export function cleanupExpiredEntries(): void {
   }
 }
 
-// Track last cleanup time
 let lastCleanup = Date.now()
-const CLEANUP_INTERVAL = 5 * 60 * 1000 // 5 minutes
+const CLEANUP_INTERVAL = 5 * 60 * 1000
 
-/**
- * Trigger cleanup if enough time has passed
- * This approach avoids memory leaks from setInterval
- */
 function maybeCleanup(): void {
   const now = Date.now()
   if (now - lastCleanup > CLEANUP_INTERVAL) {

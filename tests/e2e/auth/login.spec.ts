@@ -292,4 +292,45 @@ test.describe('Login Page', () => {
     const errorVisible = await emailError.isVisible().catch(() => false)
     expect(errorVisible || !errorVisible).toBe(true) // Accept either state
   })
+
+  test('should navigate to /courses after successful login', async ({
+    page,
+  }) => {
+    // Mock successful login response
+    await page.route('/api/auth/login', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          success: true,
+          data: {
+            user: {
+              id: 'test-user-id',
+              email: 'test@example.com',
+              role: 'USER',
+              emailConfirmedAt: new Date().toISOString(),
+            },
+            message: 'Login successful',
+          },
+        }),
+      })
+    })
+
+    const emailInput = page.locator('#email')
+    await emailInput.fill('test@example.com')
+
+    const passwordInput = page.locator('#password')
+    await passwordInput.fill('validpassword123')
+
+    const submitButton = page.locator('button:has-text("Log in")')
+    await submitButton.click()
+
+    // Should show success toast
+    await expect(page.locator('text=Logged in successfully')).toBeVisible({
+      timeout: 5000,
+    })
+
+    // Should navigate to /courses page
+    await expect(page).toHaveURL('/courses', { timeout: 5000 })
+  })
 })

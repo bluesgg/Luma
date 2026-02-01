@@ -59,7 +59,7 @@ export function LoginForm() {
         description: 'Logged in successfully',
       })
 
-      router.push('/')
+      router.push('/courses')
       router.refresh()
     } catch {
       setError('An unexpected error occurred')

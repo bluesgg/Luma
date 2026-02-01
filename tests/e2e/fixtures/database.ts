@@ -13,8 +13,8 @@ const prisma = new PrismaClient()
  */
 export async function cleanDatabase(): Promise<void> {
   // Delete in order of dependencies
-  await prisma.aiUsage.deleteMany()
-  await prisma.quotaUsage.deleteMany()
+  await prisma.aIUsageLog.deleteMany()
+  await prisma.quotaLog.deleteMany()
   await prisma.quota.deleteMany()
   await prisma.subTopicProgress.deleteMany()
   await prisma.topicProgress.deleteMany()
@@ -29,7 +29,7 @@ export async function cleanDatabase(): Promise<void> {
   await prisma.file.deleteMany()
   await prisma.course.deleteMany()
   await prisma.user.deleteMany()
-  await prisma.adminUser.deleteMany()
+  await prisma.admin.deleteMany()
 }
 
 /**
@@ -77,7 +77,10 @@ export async function seedTestData(): Promise<{
 /**
  * Create test user
  */
-export async function createTestUser(email: string, password: string): Promise<any> {
+export async function createTestUser(
+  email: string,
+  password: string
+): Promise<any> {
   return await prisma.user.create({
     data: {
       email,
@@ -92,15 +95,14 @@ export async function createTestUser(email: string, password: string): Promise<a
  * Create test admin user
  */
 export async function createTestAdmin(
-  username: string,
+  email: string,
   password: string
 ): Promise<any> {
-  return await prisma.adminUser.create({
+  return await prisma.admin.create({
     data: {
-      username,
+      email,
       passwordHash: password, // Should be hashed
       role: 'ADMIN',
-      isActive: true,
     },
   })
 }
@@ -108,7 +110,10 @@ export async function createTestAdmin(
 /**
  * Create test course for user
  */
-export async function createTestCourse(userId: string, name: string): Promise<any> {
+export async function createTestCourse(
+  userId: string,
+  name: string
+): Promise<any> {
   return await prisma.course.create({
     data: {
       userId,
@@ -207,9 +212,9 @@ export async function setupUserQuota(userId: string): Promise<void> {
   await prisma.quota.create({
     data: {
       userId,
-      bucket: 'FILE_UPLOADS',
+      bucket: 'AUTO_EXPLAIN',
       used: 0,
-      limit: 30,
+      limit: 300,
       resetAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
     },
   })

@@ -1,6 +1,43 @@
 import { test, expect, devices } from '@playwright/test'
 
 test.describe('Layout Tests', () => {
+  test('should return 200 OK status without SSR errors', async ({ page }) => {
+    const response = await page.goto('/')
+
+    // Verify HTTP status is 200, not 500
+    expect(response?.status()).toBe(200)
+
+    // Verify no SSR error messages in HTML
+    const html = await page.content()
+    expect(html).not.toContain('Application error')
+    expect(html).not.toContain('Internal Server Error')
+    expect(html).not.toContain('useState only works in Client Components')
+  })
+
+  test('should not have React SSR errors in console', async ({ page }) => {
+    const errors: string[] = []
+
+    page.on('console', (msg) => {
+      if (msg.type() === 'error') {
+        errors.push(msg.text())
+      }
+    })
+
+    await page.goto('/')
+    await page.waitForLoadState('networkidle')
+
+    // Filter out unrelated errors (like OpenTelemetry warnings)
+    const reactErrors = errors.filter(
+      (err) =>
+        err.includes('useState') ||
+        err.includes('useEffect') ||
+        err.includes('Client Components') ||
+        err.includes('use client')
+    )
+
+    expect(reactErrors).toHaveLength(0)
+  })
+
   test('should have correct viewport for desktop', async ({ page }) => {
     await page.goto('/')
 
@@ -110,7 +147,7 @@ test.describe('Layout Tests', () => {
     await page.goto('/')
 
     // Toaster is typically hidden until needed, but the div should exist
-    const toaster = page.locator('[role="region"]').first()
+    const _toaster = page.locator('[role="region"]').first()
 
     // The component might not be immediately visible, but should exist in DOM
     const toasterExists =
