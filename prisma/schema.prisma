@@ -1,8 +1,5 @@
-// =============================================================================
-// Luma Web - Prisma Schema
-// Version: 1.0 MVP
+// Prisma schema for Luma Web
 // Database: PostgreSQL (via Supabase)
-// =============================================================================
 
 generator client {
   provider = "prisma-client-js"
@@ -15,33 +12,107 @@ datasource db {
 }
 
 // =============================================================================
-// ENUMS
+// USER AUTHENTICATION
 // =============================================================================
 
-// User Authentication
-enum UserRole {
-  STUDENT
-  ADMIN
+model User {
+  id               String    @id @default(cuid())
+  email            String    @unique
+  passwordHash     String    @map("password_hash")
+  emailVerified    Boolean   @default(false) @map("email_verified")
+  failedLoginCount Int       @default(0) @map("failed_login_count")
+  lockedUntil      DateTime? @map("locked_until")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+
+  // Relationships
+  courses             Course[]
+  learningSessions    LearningSession[]
+  quotas              Quota[]
+  quotaLogs           QuotaLog[]
+  aiUsageLogs         AIUsageLog[]
+  userPreference      UserPreference?
+  verificationTokens  VerificationToken[]
+
+  @@index([email])
+  @@index([lockedUntil])
+  @@map("users")
+}
+
+model VerificationToken {
+  id        String   @id @default(cuid())
+  userId    String   @map("user_id")
+  token     String   @unique
+  type      TokenType
+  expiresAt DateTime @map("expires_at")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  // Relationships
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([token])
+  @@index([userId, type])
+  @@index([expiresAt])
+  @@map("verification_tokens")
 }
 
 enum TokenType {
-  EMAIL_VERIFY
+  EMAIL_VERIFICATION
   PASSWORD_RESET
 }
 
-// File Management
+// =============================================================================
+// COURSE & FILE MANAGEMENT
+// =============================================================================
+
+model Course {
+  id        String   @id @default(cuid())
+  userId    String   @map("user_id")
+  name      String   // Max 50 chars (validated at app level)
+  school    String
+  term      String
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  // Relationships
+  user  User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  files File[]
+
+  @@index([userId, createdAt(sort: Desc)])
+  @@map("courses")
+}
+
+model File {
+  id              String           @id @default(cuid())
+  courseId        String           @map("course_id")
+  name            String
+  sizeBytes       BigInt           @map("size_bytes")
+  pageCount       Int              @map("page_count")
+  status          FileStatus       @default(UPLOADING)
+  structureStatus StructureStatus  @default(PENDING) @map("structure_status")
+  structureError  String?          @map("structure_error") @db.Text
+  isScanned       Boolean          @default(false) @map("is_scanned")
+  claudeFileId    String?          @map("claude_file_id") // For Claude File API
+  supabaseUrl     String           @map("supabase_url")
+  createdAt       DateTime         @default(now()) @map("created_at")
+  updatedAt       DateTime         @updatedAt @map("updated_at")
+
+  // Relationships
+  course           Course            @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  topicGroups      TopicGroup[]
+  learningSessions LearningSession[]
+
+  @@index([courseId, createdAt(sort: Desc)])
+  @@index([status])
+  @@index([structureStatus])
+  @@map("files")
+}
+
 enum FileStatus {
   UPLOADING
   PROCESSING
   READY
   FAILED
-}
-
-enum FileType {
-  LECTURE
-  HOMEWORK
-  EXAM
-  OTHER
 }
 
 enum StructureStatus {
@@ -51,199 +122,22 @@ enum StructureStatus {
   FAILED
 }
 
-// AI Interactive Tutor - Knowledge Structure
-enum TopicType {
-  CORE
-  SUPPORTING
-}
-
-enum QuestionType {
-  MULTIPLE_CHOICE
-  SHORT_ANSWER
-}
-
-// AI Interactive Tutor - Learning Sessions
-enum SessionStatus {
-  IN_PROGRESS
-  COMPLETED
-  PAUSED
-}
-
-enum LearningPhase {
-  EXPLAINING
-  CONFIRMING
-  TESTING
-}
-
-enum ProgressStatus {
-  PENDING
-  IN_PROGRESS
-  COMPLETED
-  SKIPPED
-}
-
-// Quota Management
-enum QuotaBucket {
-  LEARNING_INTERACTIONS
-  AUTO_EXPLAIN
-}
-
-enum QuotaChangeReason {
-  SYSTEM_RESET
-  ADMIN_ADJUST
-  CONSUME
-  REFUND
-}
-
-// Admin System
-enum AdminRole {
-  SUPER_ADMIN
-  ADMIN
-}
-
-enum AccessActionType {
-  LOGIN
-  VIEW_FILE
-  USE_QA
-  USE_EXPLAIN
-}
-
-enum AIActionType {
-  QA
-  EXPLAIN
-  STRUCTURE_EXTRACT
-  TEST_GENERATE
-}
-
-// =============================================================================
-// USER AUTHENTICATION
-// =============================================================================
-
-model User {
-  id                  String    @id @default(cuid())
-  email               String    @unique
-  passwordHash        String    @map("password_hash")
-  role                UserRole  @default(STUDENT)
-  createdAt           DateTime  @default(now()) @map("created_at")
-  updatedAt           DateTime  @updatedAt @map("updated_at")
-  emailConfirmedAt    DateTime? @map("email_confirmed_at")
-  lastLoginAt         DateTime? @map("last_login_at")
-  failedLoginAttempts Int       @default(0) @map("failed_login_attempts")
-  lockedUntil         DateTime? @map("locked_until")
-
-  // Relations
-  courses            Course[]
-  verificationTokens VerificationToken[]
-  quotas             Quota[]
-  quotaLogs          QuotaLog[]
-  aiUsageLogs        AIUsageLog[]
-  mathpixUsages      MathpixUsage[]
-  learningSessions   LearningSession[]
-  readingProgress    ReadingProgress[]
-  preference         UserPreference?
-  accessLogs         AccessLog[]
-
-  @@index([email])
-  @@index([createdAt])
-  @@map("users")
-}
-
-model VerificationToken {
-  id        String    @id @default(cuid())
-  userId    String    @map("user_id")
-  token     String    @unique
-  type      TokenType
-  expiresAt DateTime  @map("expires_at")
-  createdAt DateTime  @default(now()) @map("created_at")
-  usedAt    DateTime? @map("used_at")
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([userId])
-  @@index([token])
-  @@index([expiresAt])
-  @@map("verification_tokens")
-}
-
-// =============================================================================
-// COURSE MANAGEMENT
-// =============================================================================
-
-model Course {
-  id        String   @id @default(cuid())
-  userId    String   @map("user_id")
-  name      String   @db.VarChar(50)
-  school    String?  @db.VarChar(100)
-  term      String?  @db.VarChar(50)
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
-
-  user  User   @relation(fields: [userId], references: [id], onDelete: Cascade)
-  files File[]
-
-  @@index([userId])
-  @@index([userId, createdAt(sort: Desc)])
-  @@map("courses")
-}
-
-// =============================================================================
-// FILE MANAGEMENT
-// =============================================================================
-
-model File {
-  id              String          @id @default(cuid())
-  courseId        String          @map("course_id")
-  name            String          @db.VarChar(255)
-  type            FileType        @default(LECTURE)
-  pageCount       Int?            @map("page_count")
-  fileSize        BigInt          @map("file_size")
-  isScanned       Boolean         @default(false) @map("is_scanned")
-  status          FileStatus      @default(UPLOADING)
-  storagePath     String          @map("storage_path")
-  createdAt       DateTime        @default(now()) @map("created_at")
-  updatedAt       DateTime        @updatedAt @map("updated_at")
-
-  // AI Interactive Tutor fields
-  structureStatus StructureStatus @default(PENDING) @map("structure_status")
-  structureError  String?         @map("structure_error")
-  extractedAt     DateTime?       @map("extracted_at")
-
-  course           Course            @relation(fields: [courseId], references: [id], onDelete: Cascade)
-  topicGroups      TopicGroup[]
-  extractedImages  ExtractedImage[]
-  learningSessions LearningSession[]
-  mathpixUsages    MathpixUsage[]
-  explanations     Explanation[]
-  imageRegions     ImageRegion[]
-  qas              QA[]
-  readingProgress  ReadingProgress[]
-
-  @@unique([courseId, name])
-  @@index([courseId])
-  @@index([courseId, createdAt(sort: Desc)])
-  @@index([status])
-  @@index([structureStatus])
-  @@map("files")
-}
-
 // =============================================================================
 // AI INTERACTIVE TUTOR - KNOWLEDGE STRUCTURE
 // =============================================================================
 
 model TopicGroup {
-  id        String    @id @default(cuid())
-  fileId    String    @map("file_id")
-  index     Int
-  title     String    @db.VarChar(500)
-  type      TopicType
-  pageStart Int?      @map("page_start")
-  pageEnd   Int?      @map("page_end")
-  createdAt DateTime  @default(now()) @map("created_at")
+  id        String   @id @default(cuid())
+  fileId    String   @map("file_id")
+  index     Int      // Order in the file
+  title     String
+  pageStart Int      @map("page_start")
+  pageEnd   Int      @map("page_end")
+  createdAt DateTime @default(now()) @map("created_at")
 
-  file          File            @relation(fields: [fileId], references: [id], onDelete: Cascade)
-  subTopics     SubTopic[]
-  tests         TopicTest[]
-  topicProgress TopicProgress[]
+  // Relationships
+  file      File       @relation(fields: [fileId], references: [id], onDelete: Cascade)
+  subTopics SubTopic[]
 
   @@unique([fileId, index])
   @@index([fileId])
@@ -251,54 +145,23 @@ model TopicGroup {
 }
 
 model SubTopic {
-  id           String   @id @default(cuid())
-  topicGroupId String   @map("topic_group_id")
-  index        Int
-  title        String   @db.VarChar(500)
-  metadata     Json
-  createdAt    DateTime @default(now()) @map("created_at")
+  id        String   @id @default(cuid())
+  topicId   String   @map("topic_id")
+  index     Int      // Order within TopicGroup
+  title     String
+  pageStart Int      @map("page_start")
+  pageEnd   Int      @map("page_end")
+  createdAt DateTime @default(now()) @map("created_at")
 
-  topicGroup       TopicGroup         @relation(fields: [topicGroupId], references: [id], onDelete: Cascade)
-  subTopicProgress SubTopicProgress[]
+  // Relationships
+  topicGroup        TopicGroup          @relation(fields: [topicId], references: [id], onDelete: Cascade)
+  subTopicCache     SubTopicCache?
+  subTopicProgress  SubTopicProgress[]
+  qaMessages        QAMessage[]
 
-  @@unique([topicGroupId, index])
-  @@index([topicGroupId])
+  @@unique([topicId, index])
+  @@index([topicId])
   @@map("sub_topics")
-}
-
-model TopicTest {
-  id            String       @id @default(cuid())
-  topicGroupId  String       @map("topic_group_id")
-  index         Int
-  type          QuestionType
-  question      String       @db.Text
-  options       Json?
-  correctAnswer String       @map("correct_answer") @db.Text
-  explanation   String       @db.Text
-  createdAt     DateTime     @default(now()) @map("created_at")
-
-  topicGroup TopicGroup @relation(fields: [topicGroupId], references: [id], onDelete: Cascade)
-
-  @@unique([topicGroupId, index])
-  @@index([topicGroupId])
-  @@map("topic_tests")
-}
-
-model ExtractedImage {
-  id          String   @id @default(cuid())
-  fileId      String   @map("file_id")
-  pageNumber  Int      @map("page_number")
-  imageIndex  Int      @map("image_index")
-  storagePath String   @map("storage_path")
-  bbox        Json
-  createdAt   DateTime @default(now()) @map("created_at")
-
-  file File @relation(fields: [fileId], references: [id], onDelete: Cascade)
-
-  @@unique([fileId, pageNumber, imageIndex])
-  @@index([fileId])
-  @@index([fileId, pageNumber])
-  @@map("extracted_images")
 }
 
 // =============================================================================
@@ -306,111 +169,103 @@ model ExtractedImage {
 // =============================================================================
 
 model LearningSession {
-  id                String        @id @default(cuid())
-  userId            String        @map("user_id")
-  fileId            String        @map("file_id")
-  status            SessionStatus @default(IN_PROGRESS)
-  currentTopicIndex Int           @default(0) @map("current_topic_index")
-  currentSubIndex   Int           @default(0) @map("current_sub_index")
-  currentPhase      LearningPhase @default(EXPLAINING) @map("current_phase")
-  startedAt         DateTime      @default(now()) @map("started_at")
-  lastActiveAt      DateTime      @updatedAt @map("last_active_at")
-  completedAt       DateTime?     @map("completed_at")
+  id              String         @id @default(cuid())
+  userId          String         @map("user_id")
+  fileId          String         @map("file_id")
+  containerId     String?        @map("container_id") // Claude container ID
+  status          SessionStatus  @default(IN_PROGRESS)
+  currentTopicIdx Int            @default(0) @map("current_topic_idx")
+  currentSubIdx   Int            @default(0) @map("current_sub_idx")
+  createdAt       DateTime       @default(now()) @map("created_at")
+  updatedAt       DateTime       @updatedAt @map("updated_at")
+  completedAt     DateTime?      @map("completed_at")
 
+  // Relationships
   user             User               @relation(fields: [userId], references: [id], onDelete: Cascade)
   file             File               @relation(fields: [fileId], references: [id], onDelete: Cascade)
-  topicProgress    TopicProgress[]
   subTopicProgress SubTopicProgress[]
+  qaMessages       QAMessage[]
 
   @@unique([userId, fileId])
   @@index([userId])
-  @@index([userId, status])
   @@index([fileId])
+  @@index([containerId])
   @@map("learning_sessions")
 }
 
-model TopicProgress {
-  id               String         @id @default(cuid())
-  sessionId        String         @map("session_id")
-  topicGroupId     String         @map("topic_group_id")
-  status           ProgressStatus @default(PENDING)
-  isWeakPoint      Boolean        @default(false) @map("is_weak_point")
-  totalAttempts    Int            @default(0) @map("total_attempts")
-  correctCount     Int            @default(0) @map("correct_count")
-  wrongCount       Int            @default(0) @map("wrong_count")
-  questionAttempts Json?          @map("question_attempts")
-  completedAt      DateTime?      @map("completed_at")
-
-  session    LearningSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-  topicGroup TopicGroup      @relation(fields: [topicGroupId], references: [id], onDelete: Cascade)
-
-  @@unique([sessionId, topicGroupId])
-  @@index([sessionId])
-  @@index([sessionId, status])
-  @@map("topic_progress")
+enum SessionStatus {
+  IN_PROGRESS
+  COMPLETED
 }
 
 model SubTopicProgress {
-  id          String    @id @default(cuid())
-  sessionId   String    @map("session_id")
-  subTopicId  String    @map("sub_topic_id")
-  confirmed   Boolean   @default(false)
-  confirmedAt DateTime? @map("confirmed_at")
+  id          String               @id @default(cuid())
+  sessionId   String               @map("session_id")
+  subTopicId  String               @map("sub_topic_id")
+  status      SubTopicStatus       @default(PENDING)
+  wrongCount  Int                  @default(0) @map("wrong_count") // Quiz wrong attempts
+  completedAt DateTime?            @map("completed_at")
+  createdAt   DateTime             @default(now()) @map("created_at")
+  updatedAt   DateTime             @updatedAt @map("updated_at")
 
+  // Relationships
   session  LearningSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
   subTopic SubTopic        @relation(fields: [subTopicId], references: [id], onDelete: Cascade)
 
   @@unique([sessionId, subTopicId])
   @@index([sessionId])
+  @@index([subTopicId])
   @@map("sub_topic_progress")
 }
 
-// =============================================================================
-// LEGACY AI FEATURES (Explanation, ImageRegion, QA)
-// =============================================================================
-
-model Explanation {
-  id        String   @id @default(cuid())
-  fileId    String   @map("file_id")
-  pageNum   Int      @map("page_num")
-  content   String   @db.Text
-  createdAt DateTime @default(now()) @map("created_at")
-
-  file File @relation(fields: [fileId], references: [id], onDelete: Cascade)
-
-  @@index([fileId])
-  @@index([fileId, pageNum])
-  @@map("explanations")
+enum SubTopicStatus {
+  PENDING
+  PASSED
+  SKIPPED
 }
 
-model ImageRegion {
-  id        String   @id @default(cuid())
-  fileId    String   @map("file_id")
-  pageNum   Int      @map("page_num")
-  bbox      Json
-  content   String   @db.Text
-  createdAt DateTime @default(now()) @map("created_at")
+// =============================================================================
+// AI INTERACTIVE TUTOR - CACHING
+// =============================================================================
 
-  file File @relation(fields: [fileId], references: [id], onDelete: Cascade)
+model SubTopicCache {
+  id          String   @id @default(cuid())
+  subTopicId  String   @unique @map("sub_topic_id")
+  explanation String   @db.Text // Markdown/LaTeX content
+  quiz        String   @db.Text // JSON: { question, options[], correct_answers[], explanation }
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
 
-  @@index([fileId])
-  @@index([fileId, pageNum])
-  @@map("image_regions")
+  // Relationships
+  subTopic SubTopic @relation(fields: [subTopicId], references: [id], onDelete: Cascade)
+
+  @@index([subTopicId])
+  @@map("sub_topic_cache")
 }
 
-model QA {
-  id        String   @id @default(cuid())
-  fileId    String   @map("file_id")
-  question  String   @db.Text
-  answer    String   @db.Text
-  pageNum   Int?     @map("page_num")
-  createdAt DateTime @default(now()) @map("created_at")
+// =============================================================================
+// AI INTERACTIVE TUTOR - Q&A
+// =============================================================================
 
-  file File @relation(fields: [fileId], references: [id], onDelete: Cascade)
+model QAMessage {
+  id         String   @id @default(cuid())
+  sessionId  String   @map("session_id")
+  subTopicId String   @map("sub_topic_id")
+  role       QARole
+  content    String   @db.Text
+  createdAt  DateTime @default(now()) @map("created_at")
 
-  @@index([fileId])
-  @@index([fileId, createdAt(sort: Desc)])
-  @@map("qas")
+  // Relationships
+  session  LearningSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  subTopic SubTopic        @relation(fields: [subTopicId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId, subTopicId, createdAt])
+  @@map("qa_messages")
+}
+
+enum QARole {
+  USER
+  ASSISTANT
 }
 
 // =============================================================================
@@ -418,76 +273,56 @@ model QA {
 // =============================================================================
 
 model Quota {
-  id      String      @id @default(cuid())
-  userId  String      @map("user_id")
-  bucket  QuotaBucket
-  used    Int         @default(0)
-  limit   Int
-  resetAt DateTime    @map("reset_at")
+  id              String   @id @default(cuid())
+  userId          String   @map("user_id")
+  aiInteractions  Int      @default(500) @map("ai_interactions") // Monthly AI call limit
+  resetAt         DateTime @map("reset_at") // Next reset date
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
 
+  // Relationships
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  @@unique([userId, bucket])
-  @@index([userId])
+  @@unique([userId])
   @@index([resetAt])
-  @@index([resetAt, bucket]) // Compound index for efficient quota reset job queries
   @@map("quotas")
 }
 
 model QuotaLog {
-  id        String            @id @default(cuid())
-  userId    String            @map("user_id")
-  bucket    QuotaBucket
-  change    Int
-  reason    QuotaChangeReason
-  metadata  Json?
-  createdAt DateTime          @default(now()) @map("created_at")
+  id         String   @id @default(cuid())
+  userId     String   @map("user_id")
+  oldValue   Int      @map("old_value")
+  newValue   Int      @map("new_value")
+  reason     String
+  adjustedBy String?  @map("adjusted_by") // Admin ID if manually adjusted
+  createdAt  DateTime @default(now()) @map("created_at")
 
+  // Relationships
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  @@index([userId])
-  @@index([userId, bucket])
-  @@index([createdAt])
+  @@index([userId, createdAt(sort: Desc)])
   @@map("quota_logs")
 }
 
-// =============================================================================
-// AI USAGE TRACKING
-// =============================================================================
-
 model AIUsageLog {
-  id           String       @id @default(cuid())
-  userId       String       @map("user_id")
-  actionType   AIActionType @map("action_type")
-  inputTokens  Int          @map("input_tokens")
-  outputTokens Int          @map("output_tokens")
-  model        String       @db.VarChar(100)
-  metadata     Json?
-  createdAt    DateTime     @default(now()) @map("created_at")
+  id          String      @id @default(cuid())
+  userId      String      @map("user_id")
+  featureType FeatureType @map("feature_type")
+  tokensUsed  Int         @map("tokens_used")
+  createdAt   DateTime    @default(now()) @map("created_at")
 
+  // Relationships
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  @@index([userId])
-  @@index([userId, actionType])
-  @@index([createdAt])
-  @@index([model])
+  @@index([userId, createdAt(sort: Desc)])
+  @@index([featureType])
   @@map("ai_usage_logs")
 }
 
-model MathpixUsage {
-  id           String   @id @default(cuid())
-  userId       String   @map("user_id")
-  fileId       String   @map("file_id")
-  requestCount Int      @default(1) @map("request_count")
-  createdAt    DateTime @default(now()) @map("created_at")
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-  file File @relation(fields: [fileId], references: [id], onDelete: Cascade)
-
-  @@index([userId])
-  @@index([fileId])
-  @@index([createdAt])
-  @@map("mathpix_usages")
+enum FeatureType {
+  EXPLAIN       // SubTopic explanation
+  RELEARN       // Re-explain
+  QA            // Q&A message
 }
 
 // =============================================================================
@@ -497,32 +332,19 @@ model MathpixUsage {
 model UserPreference {
   id            String   @id @default(cuid())
   userId        String   @unique @map("user_id")
-  uiLocale      String   @default("en") @map("ui_locale") @db.VarChar(10)
-  explainLocale String   @default("en") @map("explain_locale") @db.VarChar(10)
+  uiLocale      String   @default("en") @map("ui_locale") // en | zh
+  explainLocale String   @default("en") @map("explain_locale") // en | zh
+  createdAt     DateTime @default(now()) @map("created_at")
   updatedAt     DateTime @updatedAt @map("updated_at")
 
+  // Relationships
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("user_preferences")
 }
 
-model ReadingProgress {
-  id          String   @id @default(cuid())
-  userId      String   @map("user_id")
-  fileId      String   @map("file_id")
-  currentPage Int      @default(1) @map("current_page")
-  updatedAt   DateTime @updatedAt @map("updated_at")
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-  file File @relation(fields: [fileId], references: [id], onDelete: Cascade)
-
-  @@unique([userId, fileId])
-  @@index([userId])
-  @@map("reading_progress")
-}
-
 // =============================================================================
-// ADMIN SYSTEM (Separate account system)
+// ADMIN
 // =============================================================================
 
 model Admin {
@@ -531,41 +353,13 @@ model Admin {
   passwordHash String    @map("password_hash")
   role         AdminRole @default(ADMIN)
   createdAt    DateTime  @default(now()) @map("created_at")
-  disabledAt   DateTime? @map("disabled_at")
-
-  auditLogs AuditLog[]
+  updatedAt    DateTime  @updatedAt @map("updated_at")
 
   @@index([email])
   @@map("admins")
 }
 
-model AccessLog {
-  id         String           @id @default(cuid())
-  userId     String           @map("user_id")
-  actionType AccessActionType @map("action_type")
-  metadata   Json?
-  timestamp  DateTime         @default(now())
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([userId])
-  @@index([actionType])
-  @@index([timestamp])
-  @@map("access_logs")
-}
-
-model AuditLog {
-  id           String   @id @default(cuid())
-  adminId      String   @map("admin_id")
-  action       String   @db.VarChar(100)
-  targetUserId String?  @map("target_user_id")
-  details      Json?
-  createdAt    DateTime @default(now()) @map("created_at")
-
-  admin Admin @relation(fields: [adminId], references: [id], onDelete: Cascade)
-
-  @@index([adminId])
-  @@index([targetUserId])
-  @@index([createdAt])
-  @@map("audit_logs")
+enum AdminRole {
+  ADMIN
+  SUPER_ADMIN
 }

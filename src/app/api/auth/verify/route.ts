@@ -1,74 +1,79 @@
-import type { NextRequest } from 'next/server'
-import { errorResponse, HTTP_STATUS } from '@/lib/api-response'
-import { ERROR_CODES } from '@/lib/constants'
-import { validateToken, markTokenAsUsed } from '@/lib/token'
-import prisma from '@/lib/prisma'
-import { logger } from '@/lib/logger'
+import { logger } from '@/lib/logger';
+import { NextRequest } from 'next/server';
+import { prisma } from '@/lib/prisma';
+import { isTokenExpired } from '@/lib/token';
+import { verifyTokenSchema } from '@/lib/validation';
+import { successResponse, errorResponse, ERROR_CODES } from '@/lib/api-response';
+import { requireCsrfToken } from '@/lib/csrf';
 
-export async function GET(request: NextRequest) {
+/**
+ * POST /api/auth/verify
+ * Verify user email with token
+ */
+export async function POST(request: NextRequest) {
   try {
-    const { searchParams } = new URL(request.url)
-    const token = searchParams.get('token')
+    // CSRF protection
+    await requireCsrfToken(request);
 
-    if (!token) {
+    // Parse and validate request body
+    const body = await request.json();
+    const validationResult = verifyTokenSchema.safeParse(body);
+
+    if (!validationResult.success) {
       return errorResponse(
         ERROR_CODES.VALIDATION_ERROR,
-        'Verification token is required',
-        HTTP_STATUS.BAD_REQUEST
-      )
+        validationResult.error.issues[0].message,
+        400
+      );
     }
 
-    // Validate token
-    const validation = await validateToken(token)
+    const { token } = validationResult.data;
 
-    if (!validation.isValid || !validation.token) {
-      return errorResponse(
-        ERROR_CODES.AUTH_TOKEN_INVALID,
-        'Invalid or expired verification token',
-        HTTP_STATUS.BAD_REQUEST
-      )
+    // Find verification token
+    const verificationToken = await prisma.verificationToken.findUnique({
+      where: { token },
+      include: { user: true },
+    });
+
+    if (!verificationToken) {
+      return errorResponse(ERROR_CODES.INVALID_TOKEN, 'Invalid or expired verification token.', 400);
     }
 
-    // Check that token is for email verification
-    if (validation.token.type !== 'EMAIL_VERIFY') {
-      return errorResponse(
-        ERROR_CODES.AUTH_TOKEN_INVALID,
-        'Invalid token type',
-        HTTP_STATUS.BAD_REQUEST
-      )
+    // Check if token is expired
+    if (isTokenExpired(verificationToken.expiresAt)) {
+      // Delete expired token
+      await prisma.verificationToken.delete({
+        where: { token: verificationToken.token },
+      });
+
+      return errorResponse(ERROR_CODES.TOKEN_EXPIRED, 'Verification token has expired. Please request a new one.', 400);
     }
 
-    // Update user's email confirmation
-    const user = await prisma.user.update({
-      where: { id: validation.token.userId },
-      data: { emailConfirmedAt: new Date() },
-      select: {
-        id: true,
-        email: true,
-        emailConfirmedAt: true,
-      },
-    })
+    // Check token type
+    if (verificationToken.type !== 'EMAIL_VERIFICATION') {
+      return errorResponse(ERROR_CODES.INVALID_TOKEN, 'Invalid token type.', 400);
+    }
 
-    // Mark token as used
-    await markTokenAsUsed(validation.token.id)
+    // Update user email verification status and delete token in a transaction
+    await prisma.$transaction([
+      prisma.user.update({
+        where: { id: verificationToken.userId },
+        data: { emailVerified: true },
+      }),
+      prisma.verificationToken.delete({
+        where: { token: verificationToken.token },
+      }),
+    ]);
 
-    logger.info('Email verified successfully', { userId: user.id })
-
-    // Redirect to login page with success message
-    return new Response(null, {
-      status: 302,
-      headers: {
-        Location: '/login?verified=true',
-      },
-    })
+    return successResponse({
+      message: 'Email verified successfully. You can now log in.',
+    });
   } catch (error) {
-    logger.error('Email verification error', error)
-    // Redirect to login with error
-    return new Response(null, {
-      status: 302,
-      headers: {
-        Location: '/login?verified=false',
-      },
-    })
+    logger.error('Email verification error:', error);
+    return errorResponse(
+      ERROR_CODES.INTERNAL_ERROR,
+      'An error occurred during email verification. Please try again.',
+      500
+    );
   }
 }

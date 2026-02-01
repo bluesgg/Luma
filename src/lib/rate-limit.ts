@@ -1,107 +1,126 @@
-import { RATE_LIMITS } from './constants'
-
 /**
- * In-memory rate limiter (for development)
- * TODO: Replace with Redis/Upstash for production
+ * Rate limiting implementation
+ * Tracks requests in memory and enforces limits
  */
 
-interface RateLimitConfig {
-  windowMs: number
-  maxRequests: number
+interface RateLimitRecord {
+  count: number;
+  resetAt: number;
 }
 
-interface RateLimitEntry {
-  count: number
-  resetTime: number
+interface RateLimitResult {
+  allowed: boolean;
+  remaining: number;
+  resetAt: number;
 }
 
-const store = new Map<string, RateLimitEntry>()
+export class RateLimiter {
+  private attempts: Map<string, RateLimitRecord> = new Map();
 
-/**
- * Check if a request should be rate limited
- */
-async function checkRateLimit(
-  key: string,
-  config: RateLimitConfig
-): Promise<{
-  allowed: boolean
-  remaining: number
-  resetTime: number
-}> {
-  maybeCleanup()
+  constructor(
+    private maxAttempts: number,
+    private windowMs: number
+  ) {}
 
-  const now = Date.now()
-  const entry = store.get(key)
+  async check(identifier: string): Promise<RateLimitResult> {
+    const now = Date.now();
+    const record = this.attempts.get(identifier);
 
-  if (!entry || now > entry.resetTime) {
-    const resetTime = now + config.windowMs
-    store.set(key, { count: 1, resetTime })
+    // First attempt or window expired
+    if (!record || now > record.resetAt) {
+      this.attempts.set(identifier, {
+        count: 1,
+        resetAt: now + this.windowMs,
+      });
+      return {
+        allowed: true,
+        remaining: this.maxAttempts - 1,
+        resetAt: now + this.windowMs,
+      };
+    }
+
+    // Rate limit exceeded
+    if (record.count >= this.maxAttempts) {
+      return {
+        allowed: false,
+        remaining: 0,
+        resetAt: record.resetAt,
+      };
+    }
+
+    // Increment count
+    record.count++;
+    this.attempts.set(identifier, record);
 
     return {
       allowed: true,
-      remaining: config.maxRequests - 1,
-      resetTime,
-    }
+      remaining: this.maxAttempts - record.count,
+      resetAt: record.resetAt,
+    };
   }
 
-  if (entry.count >= config.maxRequests) {
-    return {
-      allowed: false,
-      remaining: 0,
-      resetTime: entry.resetTime,
-    }
+  reset(identifier: string): void {
+    this.attempts.delete(identifier);
   }
 
-  entry.count++
-  store.set(key, entry)
+  resetAll(): void {
+    this.attempts.clear();
+  }
 
-  return {
-    allowed: true,
-    remaining: config.maxRequests - entry.count,
-    resetTime: entry.resetTime,
+  /**
+   * Clean up expired entries to prevent memory leaks
+   */
+  cleanup(): void {
+    const now = Date.now();
+    const expiredKeys: string[] = [];
+
+    this.attempts.forEach((record, identifier) => {
+      if (now > record.resetAt) {
+        expiredKeys.push(identifier);
+      }
+    });
+
+    expiredKeys.forEach(key => this.attempts.delete(key));
+  }
+}
+
+// Pre-configured rate limiters for different endpoints
+// 10 requests per 15 minutes for auth endpoints
+export const authRateLimiter = new RateLimiter(10, 15 * 60 * 1000);
+
+// 100 requests per minute for API endpoints
+export const apiRateLimiter = new RateLimiter(100, 60 * 1000);
+
+// 20 requests per minute for AI endpoints
+export const aiRateLimiter = new RateLimiter(20, 60 * 1000);
+
+// 5 requests per 15 minutes for email endpoints (verification, reset)
+export const emailRateLimiter = new RateLimiter(5, 15 * 60 * 1000);
+
+// Cleanup expired entries every 5 minutes
+// Only in development (serverless environments don't support setInterval)
+if (typeof window === 'undefined' && process.env.NODE_ENV !== 'production') {
+  setInterval(() => {
+    authRateLimiter.cleanup();
+    apiRateLimiter.cleanup();
+    aiRateLimiter.cleanup();
+    emailRateLimiter.cleanup();
+  }, 5 * 60 * 1000);
+} else if (process.env.NODE_ENV === 'production') {
+  // In production, use Redis or another distributed cache instead of in-memory
+  // This is a warning that in-memory rate limiting won't work in serverless
+  if (typeof window === 'undefined') {
+    const { logger } = require('@/lib/logger');
+    logger.warn('In-memory rate limiting is not suitable for production serverless environments. Consider using Redis.');
   }
 }
 
 /**
- * Rate limit for authentication endpoints
+ * Reset all rate limiters (useful for testing)
  */
-export async function authRateLimit(identifier: string) {
-  return checkRateLimit(`auth:${identifier}`, RATE_LIMITS.AUTH)
-}
-
-/**
- * Rate limit for API endpoints
- */
-export async function apiRateLimit(identifier: string) {
-  return checkRateLimit(`api:${identifier}`, RATE_LIMITS.API)
-}
-
-/**
- * Rate limit for email sending
- */
-export async function emailRateLimit(identifier: string) {
-  return checkRateLimit(`email:${identifier}`, RATE_LIMITS.EMAIL)
-}
-
-/**
- * Clean up expired entries
- */
-function cleanupExpiredEntries(): void {
-  const now = Date.now()
-  for (const [key, entry] of store.entries()) {
-    if (now > entry.resetTime) {
-      store.delete(key)
-    }
-  }
-}
-
-let lastCleanup = Date.now()
-const CLEANUP_INTERVAL = 5 * 60 * 1000
-
-function maybeCleanup(): void {
-  const now = Date.now()
-  if (now - lastCleanup > CLEANUP_INTERVAL) {
-    cleanupExpiredEntries()
-    lastCleanup = now
-  }
+export function resetAllRateLimiters(): void {
+  authRateLimiter.resetAll();
+  apiRateLimiter.resetAll();
+  aiRateLimiter.resetAll();
+  emailRateLimiter.resetAll();
 }

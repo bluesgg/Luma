@@ -1,79 +1,62 @@
-import { z } from 'zod'
-import { COURSE_LIMITS, SECURITY } from './constants'
+import { z } from 'zod';
 
 /**
- * Common validation schemas
+ * Validation schemas using Zod
+ * Used for form validation and API request validation
  */
 
-// Authentication
-export const registerSchema = z.object({
-  email: z.string().email('Invalid email format'),
-  password: z
-    .string()
-    .min(
-      SECURITY.PASSWORD_MIN_LENGTH,
-      'Password must be at least 8 characters'
-    ),
-})
+// Email validation schema
+export const emailSchema = z.string().email('Invalid email address');
 
+// Password validation schema with complexity requirements
+export const passwordSchema = z
+  .string()
+  .min(8, 'Password must be at least 8 characters')
+  .max(128, 'Password must not exceed 128 characters')
+  .regex(/[A-Z]/, 'Password must contain at least one uppercase letter')
+  .regex(/[a-z]/, 'Password must contain at least one lowercase letter')
+  .regex(/\d/, 'Password must contain at least one number')
+  .regex(
+    /[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/,
+    'Password must contain at least one special character'
+  );
+
+// Registration schema
+export const registerSchema = z.object({
+  email: emailSchema,
+  password: passwordSchema,
+});
+
+// Login schema (password doesn't need complexity validation on login)
 export const loginSchema = z.object({
-  email: z.string().email('Invalid email format'),
+  email: emailSchema,
   password: z.string().min(1, 'Password is required'),
   rememberMe: z.boolean().optional(),
-})
+});
 
+// Password reset request schema
 export const resetPasswordSchema = z.object({
-  email: z.string().email('Invalid email format'),
-})
+  email: emailSchema,
+});
 
-export const confirmResetPasswordSchema = z.object({
+// Password reset confirmation schema
+export const confirmResetSchema = z
+  .object({
+    token: z.string().min(1, 'Token is required'),
+    password: passwordSchema,
+    confirmPassword: z.string().min(1, 'Please confirm your password'),
+  })
+  .refine((data) => data.password === data.confirmPassword, {
+    message: 'Passwords do not match',
+    path: ['confirmPassword'],
+  });
+
+// Email verification schema
+export const verifyTokenSchema = z.object({
   token: z.string().min(1, 'Token is required'),
-  password: z
-    .string()
-    .min(
-      SECURITY.PASSWORD_MIN_LENGTH,
-      'Password must be at least 8 characters'
-    ),
-})
+});
 
-// Course Management
-export const createCourseSchema = z.object({
-  name: z
-    .string()
-    .min(1, 'Course name is required')
-    .max(
-      COURSE_LIMITS.MAX_NAME_LENGTH,
-      `Course name must be less than ${COURSE_LIMITS.MAX_NAME_LENGTH} characters`
-    ),
-  school: z
-    .string()
-    .max(
-      COURSE_LIMITS.MAX_SCHOOL_LENGTH,
-      `School name must be less than ${COURSE_LIMITS.MAX_SCHOOL_LENGTH} characters`
-    )
-    .optional()
-    .nullable(),
-  term: z
-    .string()
-    .max(
-      COURSE_LIMITS.MAX_TERM_LENGTH,
-      `Term must be less than ${COURSE_LIMITS.MAX_TERM_LENGTH} characters`
-    )
-    .optional()
-    .nullable(),
-})
-
-export const updateCourseSchema = createCourseSchema.partial()
-
-// Admin
-export const adminLoginSchema = z.object({
-  email: z.string().email('Invalid email format'),
-  password: z.string().min(1, 'Password is required'),
-})
-
-export const quotaAdjustmentSchema = z.object({
-  bucket: z.enum(['LEARNING_INTERACTIONS', 'AUTO_EXPLAIN']),
-  action: z.enum(['set_limit', 'adjust_used', 'reset']),
-  value: z.number().min(0).optional(),
-  reason: z.string().min(1, 'Reason is required'),
-})
+// Resend verification schema
+export const resendVerificationSchema = z.object({
+  email: emailSchema,
+});

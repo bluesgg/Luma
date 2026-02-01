@@ -1,0 +1,79 @@
+import { logger } from '@/lib/logger';
+import { NextRequest } from 'next/server';
+import { prisma } from '@/lib/prisma';
+import { isTokenExpired } from '@/lib/token';
+import { verifyTokenSchema } from '@/lib/validation';
+import { successResponse, errorResponse, ERROR_CODES } from '@/lib/api-response';
+import { requireCsrfToken } from '@/lib/csrf';
+
+/**
+ * POST /api/auth/verify
+ * Verify user email with token
+ */
+export async function POST(request: NextRequest) {
+  try {
+    // CSRF protection
+    await requireCsrfToken(request);
+
+    // Parse and validate request body
+    const body = await request.json();
+    const validationResult = verifyTokenSchema.safeParse(body);
+
+    if (!validationResult.success) {
+      return errorResponse(
+        ERROR_CODES.VALIDATION_ERROR,
+        validationResult.error.issues[0].message,
+        400
+      );
+    }
+
+    const { token } = validationResult.data;
+
+    // Find verification token
+    const verificationToken = await prisma.verificationToken.findUnique({
+      where: { token },
+      include: { user: true },
+    });
+
+    if (!verificationToken) {
+      return errorResponse(ERROR_CODES.INVALID_TOKEN, 'Invalid or expired verification token.', 400);
+    }
+
+    // Check if token is expired
+    if (isTokenExpired(verificationToken.expiresAt)) {
+      // Delete expired token
+      await prisma.verificationToken.delete({
+        where: { id: verificationToken.id },
+      });
+
+      return errorResponse(ERROR_CODES.TOKEN_EXPIRED, 'Verification token has expired. Please request a new one.', 400);
+    }
+
+    // Check token type
+    if (verificationToken.type !== 'EMAIL_VERIFICATION') {
+      return errorResponse(ERROR_CODES.INVALID_TOKEN, 'Invalid token type.', 400);
+    }
+
+    // Update user email verification status and delete token in a transaction
+    await prisma.$transaction([
+      prisma.user.update({
+        where: { id: verificationToken.userId },
+        data: { emailVerified: true },
+      }),
+      prisma.verificationToken.delete({
+        where: { id: verificationToken.id },
+      }),
+    ]);
+
+    return successResponse({
+      message: 'Email verified successfully. You can now log in.',
+    });
+  } catch (error) {
+    logger.error('Email verification error:', error);
+    return errorResponse(
+      ERROR_CODES.INTERNAL_ERROR,
+      'An error occurred during email verification. Please try again.',
+      500
+    );
+  }
+}

@@ -1,39 +1,12 @@
-# Dependencies
-node_modules/
-.pnp
-.pnp.js
-
-# Build outputs
-.next/
-out/
-build/
-dist/
-
-# Prisma
-prisma/migrations/
-
-# Testing
-coverage/
-.nyc_output/
-
-# Misc
-.DS_Store
-*.log
-*.tsbuildinfo
-
-# Environment files
+node_modules
+.next
+out
+build
+dist
+coverage
 .env
-.env.local
-.env.production.local
-.env.test.local
-
-# Lock files
+.env.*
+!.env.example
+pnpm-lock.yaml
 package-lock.json
 yarn.lock
-pnpm-lock.yaml
-
-# Public assets
-public/
-
-# Generated files
-src/types/database.ts

@@ -1,25 +1,22 @@
-'use client'
+'use client';
 
-import { useState } from 'react'
-import { useForm } from 'react-hook-form'
-import { zodResolver } from '@hookform/resolvers/zod'
-import type { z } from 'zod'
-import Link from 'next/link'
-import { Loader2 } from 'lucide-react'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import { Alert, AlertDescription } from '@/components/ui/alert'
-import { resetPasswordSchema } from '@/lib/validation'
-import { useToast } from '@/hooks/use-toast'
-
-type ForgotPasswordFormData = z.infer<typeof resetPasswordSchema>
+import React, { useState } from 'react';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import Link from 'next/link';
+import { resetPasswordSchema } from '@/lib/validation';
+import type { z } from 'zod';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { useCsrf } from '@/hooks/use-csrf';
+type ForgotPasswordFormData = z.infer<typeof resetPasswordSchema>;
 
 export function ForgotPasswordForm() {
-  const { toast } = useToast()
-  const [isLoading, setIsLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [success, setSuccess] = useState(false)
+  const [isLoading, setIsLoading] = useState(false);
+  const { csrfToken } = useCsrf();  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState(false);
 
   const {
     register,
@@ -27,59 +24,67 @@ export function ForgotPasswordForm() {
     formState: { errors },
   } = useForm<ForgotPasswordFormData>({
     resolver: zodResolver(resetPasswordSchema),
-  })
+    defaultValues: {
+      email: '',
+    },
+  });
 
   const onSubmit = async (data: ForgotPasswordFormData) => {
     try {
-      setIsLoading(true)
-      setError(null)
+      setIsLoading(true);
+      setError(null);
 
       const response = await fetch('/api/auth/reset-password', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'x-csrf-token': csrfToken,
+        },
         body: JSON.stringify(data),
-      })
+      });
 
-      const result = await response.json()
+      const result = await response.json();
 
-      if (!response.ok) {
-        setError(result.error?.message || 'Failed to send reset email')
-        return
+      if (!result.success) {
+        // Show generic message even on error to prevent email enumeration
+        if (result.error?.code === 'RATE_LIMIT_EXCEEDED') {
+          setError(result.error.message);
+          return;
+        }
+        // Still show success for other errors to prevent enumeration
+        setSuccess(true);
+        return;
       }
 
-      setSuccess(true)
-      toast({
-        title: 'Success',
-        description: 'Password reset email sent',
-      })
-    } catch {
-      setError('An unexpected error occurred')
+      setSuccess(true);
+    } catch (err) {
+      // Show generic success message even on network error
+      setSuccess(true);
     } finally {
-      setIsLoading(false)
+      setIsLoading(false);
     }
-  }
+  };
 
   if (success) {
     return (
       <div className="space-y-4">
         <Alert>
           <AlertDescription>
-            If an account with that email exists, we&apos;ve sent a password
-            reset link. Please check your email.
+            If an account exists with this email, a password reset link has been sent. Please check
+            your inbox and spam folder.
           </AlertDescription>
         </Alert>
-
         <div className="text-center">
           <Link href="/login" className="text-sm text-primary hover:underline">
             Back to login
           </Link>
         </div>
       </div>
-    )
+    );
   }
 
   return (
-    <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
+    <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
       {error && (
         <Alert variant="destructive">
           <AlertDescription>{error}</AlertDescription>
@@ -87,34 +92,35 @@ export function ForgotPasswordForm() {
       )}
 
       <div className="space-y-2">
+        <p className="text-sm text-muted-foreground">
+          Enter your email address and we&apos;ll send you a link to reset your password.
+        </p>
+      </div>
+
+      <div className="space-y-2">
         <Label htmlFor="email">Email</Label>
         <Input
           id="email"
           type="email"
-          placeholder="your@email.com"
-          autoComplete="email"
+          placeholder="you@example.com"
           {...register('email')}
           disabled={isLoading}
         />
         {errors.email && (
-          <p className="text-sm text-red-600">{errors.email.message}</p>
+          <p className="text-sm text-destructive">{errors.email.message}</p>
         )}
-        <p className="text-sm text-gray-600">
-          Enter your email address and we&apos;ll send you a link to reset your
-          password.
-        </p>
       </div>
 
       <Button type="submit" className="w-full" disabled={isLoading}>
-        {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
         {isLoading ? 'Sending...' : 'Send reset link'}
       </Button>
 
       <div className="text-center text-sm">
+        Remember your password?{' '}
         <Link href="/login" className="text-primary hover:underline">
-          Back to login
+          Sign in
         </Link>
       </div>
     </form>
-  )
+  );
 }

@@ -1,90 +1,114 @@
 /**
- * Application-wide constants
+ * Application Constants
+ *
+ * Business rules and limits as defined in PRD
  */
 
-// Error Codes
+// =============================================================================
+// COURSE LIMITS
+// =============================================================================
+
+export const MAX_COURSES_PER_USER = 6
+export const MAX_COURSE_NAME_LENGTH = 50
+
+// =============================================================================
+// FILE LIMITS
+// =============================================================================
+
+export const MAX_FILE_SIZE_BYTES = 500 * 1024 * 1024 // 500MB
+export const MAX_FILE_PAGE_COUNT = 500
+export const MAX_FILES_PER_COURSE = 30
+export const MAX_STORAGE_PER_USER_BYTES = 5 * 1024 * 1024 * 1024 // 5GB
+
+// =============================================================================
+// AI QUOTA
+// =============================================================================
+
+export const DEFAULT_AI_INTERACTIONS_PER_MONTH = 500
+
+// =============================================================================
+// LEARNING LIMITS
+// =============================================================================
+
+export const MAX_QA_MESSAGES_PER_SUBTOPIC = 20
+export const MAX_QUIZ_ATTEMPTS_PER_SUBTOPIC = 3
+
+// =============================================================================
+// AUTHENTICATION
+// =============================================================================
+
+export const MAX_FAILED_LOGIN_ATTEMPTS = 5
+export const ACCOUNT_LOCKOUT_DURATION_MS = 30 * 60 * 1000 // 30 minutes
+export const SESSION_DURATION_MS = 7 * 24 * 60 * 60 * 1000 // 7 days
+export const SESSION_DURATION_REMEMBER_ME_MS = 30 * 24 * 60 * 60 * 1000 // 30 days
+export const VERIFICATION_TOKEN_EXPIRY_MS = 24 * 60 * 60 * 1000 // 24 hours
+export const PASSWORD_RESET_TOKEN_EXPIRY_MS = 24 * 60 * 60 * 1000 // 24 hours
+
+// =============================================================================
+// RATE LIMITING
+// =============================================================================
+
+export const RATE_LIMIT_AUTH_REQUESTS = 10
+export const RATE_LIMIT_AUTH_WINDOW_MS = 15 * 60 * 1000 // 15 minutes
+
+export const RATE_LIMIT_API_REQUESTS = 100
+export const RATE_LIMIT_API_WINDOW_MS = 60 * 1000 // 1 minute
+
+export const RATE_LIMIT_AI_REQUESTS = 20
+export const RATE_LIMIT_AI_WINDOW_MS = 60 * 1000 // 1 minute
+
+export const RATE_LIMIT_EMAIL_REQUESTS = 5
+export const RATE_LIMIT_EMAIL_WINDOW_MS = 15 * 60 * 1000 // 15 minutes
+
+// =============================================================================
+// SUPPORTED LOCALES
+// =============================================================================
+
+export const SUPPORTED_UI_LOCALES = ['en', 'zh'] as const
+export const SUPPORTED_EXPLAIN_LOCALES = ['en', 'zh'] as const
+export const DEFAULT_UI_LOCALE = 'en'
+export const DEFAULT_EXPLAIN_LOCALE = 'en'
+
+// =============================================================================
+// ERROR CODES
+// =============================================================================
+
 export const ERROR_CODES = {
   // Authentication
   AUTH_INVALID_CREDENTIALS: 'AUTH_INVALID_CREDENTIALS',
   AUTH_EMAIL_NOT_VERIFIED: 'AUTH_EMAIL_NOT_VERIFIED',
   AUTH_ACCOUNT_LOCKED: 'AUTH_ACCOUNT_LOCKED',
-  AUTH_UNAUTHORIZED: 'AUTH_UNAUTHORIZED',
-  AUTH_TOKEN_EXPIRED: 'AUTH_TOKEN_EXPIRED',
   AUTH_TOKEN_INVALID: 'AUTH_TOKEN_INVALID',
+  AUTH_TOKEN_EXPIRED: 'AUTH_TOKEN_EXPIRED',
 
-  // Course Management
+  // Course
   COURSE_LIMIT_REACHED: 'COURSE_LIMIT_REACHED',
   COURSE_NOT_FOUND: 'COURSE_NOT_FOUND',
-  COURSE_FORBIDDEN: 'COURSE_FORBIDDEN',
+  COURSE_UNAUTHORIZED: 'COURSE_UNAUTHORIZED',
 
-  // Quota
-  QUOTA_EXCEEDED: 'QUOTA_EXCEEDED',
+  // File
+  FILE_TOO_LARGE: 'FILE_TOO_LARGE',
+  FILE_TOO_MANY_PAGES: 'FILE_TOO_MANY_PAGES',
+  FILE_DUPLICATE_NAME: 'FILE_DUPLICATE_NAME',
+  FILE_LIMIT_REACHED: 'FILE_LIMIT_REACHED',
+  STORAGE_LIMIT_REACHED: 'STORAGE_LIMIT_REACHED',
+  FILE_NOT_FOUND: 'FILE_NOT_FOUND',
+  FILE_UNAUTHORIZED: 'FILE_UNAUTHORIZED',
 
-  // General
-  VALIDATION_ERROR: 'VALIDATION_ERROR',
-  INTERNAL_SERVER_ERROR: 'INTERNAL_SERVER_ERROR',
+  // AI Tutor
+  TUTOR_STRUCTURE_NOT_READY: 'TUTOR_STRUCTURE_NOT_READY',
+  TUTOR_STRUCTURE_FAILED: 'TUTOR_STRUCTURE_FAILED',
+  TUTOR_QUOTA_EXCEEDED: 'TUTOR_QUOTA_EXCEEDED',
+  TUTOR_SESSION_NOT_FOUND: 'TUTOR_SESSION_NOT_FOUND',
+  TUTOR_QA_LIMIT_REACHED: 'TUTOR_QA_LIMIT_REACHED',
+
+  // Generic
+  UNAUTHORIZED: 'UNAUTHORIZED',
+  FORBIDDEN: 'FORBIDDEN',
   NOT_FOUND: 'NOT_FOUND',
+  VALIDATION_ERROR: 'VALIDATION_ERROR',
+  INTERNAL_ERROR: 'INTERNAL_ERROR',
   RATE_LIMIT_EXCEEDED: 'RATE_LIMIT_EXCEEDED',
-  CSRF_TOKEN_INVALID: 'CSRF_TOKEN_INVALID',
 } as const
 
-// Course Limits
-export const COURSE_LIMITS = {
-  MAX_COURSES_PER_USER: 6,
-  MAX_NAME_LENGTH: 50,
-  MAX_SCHOOL_LENGTH: 100,
-  MAX_TERM_LENGTH: 50,
-} as const
-
-// Quota Limits
-export const QUOTA_LIMITS = {
-  LEARNING_INTERACTIONS: 150, // per month
-  AUTO_EXPLAIN: 300, // per month
-} as const
-
-// Rate Limits (requests per window)
-export const RATE_LIMITS = {
-  AUTH: {
-    windowMs: 15 * 60 * 1000, // 15 minutes
-    maxRequests: 10,
-  },
-  API: {
-    windowMs: 60 * 1000, // 1 minute
-    maxRequests: 100,
-  },
-  EMAIL: {
-    windowMs: 15 * 60 * 1000, // 15 minutes
-    maxRequests: 5,
-  },
-} as const
-
-// Account Security
-export const SECURITY = {
-  MAX_LOGIN_ATTEMPTS: 5,
-  LOCKOUT_DURATION_MS: 30 * 60 * 1000, // 30 minutes
-  PASSWORD_MIN_LENGTH: 8,
-  TOKEN_EXPIRY_HOURS: 24,
-  SESSION_COOKIE_NAME: 'luma-session',
-  SESSION_MAX_AGE_DAYS: 7,
-  SESSION_MAX_AGE_REMEMBER_DAYS: 30,
-} as const
-
-// Pagination
-export const PAGINATION = {
-  DEFAULT_PAGE_SIZE: 20,
-  MAX_PAGE_SIZE: 100,
-} as const
-
-// Admin Security
-export const ADMIN_SECURITY = {
-  SESSION_COOKIE_NAME: 'luma-admin-session',
-  SESSION_MAX_AGE_DAYS: 1, // 24 hours for admin sessions
-} as const
-
-// Admin Error Codes
-export const ADMIN_ERROR_CODES = {
-  ADMIN_UNAUTHORIZED: 'ADMIN_UNAUTHORIZED',
-  ADMIN_FORBIDDEN: 'ADMIN_FORBIDDEN',
-  ADMIN_DISABLED: 'ADMIN_DISABLED',
-  ADMIN_INVALID_CREDENTIALS: 'ADMIN_INVALID_CREDENTIALS',
-} as const
+export type ErrorCode = (typeof ERROR_CODES)[keyof typeof ERROR_CODES]

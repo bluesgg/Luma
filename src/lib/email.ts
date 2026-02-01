@@ -1,180 +1,171 @@
-import { logger } from './logger'
-
+import { logger } from '@/lib/logger';
 /**
- * Email service integration
- * Uses Resend API in production, console.log in development
+ * Email service for sending verification and password reset emails
+ * In development, logs to console. In production, would use email service provider.
  */
+
+const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+const APP_NAME = 'Luma Web';
 
 interface EmailOptions {
-  to: string
-  subject: string
-  html: string
+  to: string;
+  subject: string;
+  html: string;
+  text: string;
 }
 
 /**
- * Send an email using Resend API or console.log for development
+ * Send an email (mock implementation for development)
+ * In production, replace with actual email service (Resend, SendGrid, etc.)
  */
-export async function sendEmail(options: EmailOptions): Promise<void> {
-  const { to, subject, html } = options
-
-  // Validate inputs
-  if (!to || !subject || !html) {
-    throw new Error('Missing required email fields')
+async function sendEmail(options: EmailOptions): Promise<void> {
+  // In development, log to console
+  if (process.env.NODE_ENV === 'development') {
+    logger.info('📧 Email sent:', {
+      to: options.to,
+      subject: options.subject,
+    });
+    return;
   }
 
-  // In development or if Resend is not configured, log to console
-  if (process.env.NODE_ENV !== 'production' || !process.env.RESEND_API_KEY) {
-    logger.info('='.repeat(80))
-    logger.info('📧 Email (Development Mode)')
-    logger.info('='.repeat(80))
-    logger.info(`To: ${to}`)
-    logger.info(`Subject: ${subject}`)
-    logger.info(`HTML: ${html}`)
-    logger.info('='.repeat(80))
-    return
-  }
-
-  // In production, use Resend API
-  try {
-    const response = await fetch('https://api.resend.com/emails', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
-      },
-      body: JSON.stringify({
-        from: process.env.EMAIL_FROM || 'noreply@luma.app',
-        to,
-        subject,
-        html,
-      }),
-    })
-
-    if (!response.ok) {
-      const error = await response.text()
-      throw new Error(`Failed to send email: ${error}`)
-    }
-
-    logger.info(`Email sent successfully to ${to}`)
-  } catch (error) {
-    logger.error('Failed to send email', error)
-    // Don't throw - log and continue
-    // We don't want email failures to break the application flow
-  }
+  // In production, integrate with email service provider
+  // Example with Resend:
+  // const resend = new Resend(process.env.RESEND_API_KEY);
+  // await resend.emails.send({
+  //   from: 'noreply@luma.app',
+  //   to: options.to,
+  //   subject: options.subject,
+  //   html: options.html,
+  // });
 }
 
 /**
- * Send verification email
+ * Send email verification email
+ * @param email - Recipient email address
+ * @param token - Verification token
  */
-export async function sendVerificationEmail(
-  email: string,
-  token: string
-): Promise<void> {
-  // Ensure token is properly encoded for URL
-  const encodedToken = encodeURIComponent(token)
-  const verificationUrl = `${process.env.NEXT_PUBLIC_APP_URL}/api/auth/verify?token=${encodedToken}`
+export async function sendVerificationEmail(email: string, token: string): Promise<void> {
+  const verifyUrl = `${APP_URL}/verify?token=${token}`;
 
   const html = `
     <!DOCTYPE html>
     <html>
       <head>
         <meta charset="utf-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Verify Your Email - Luma</title>
+        <style>
+          body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+          .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+          .button {
+            display: inline-block;
+            padding: 12px 24px;
+            background-color: #0070f3;
+            color: white;
+            text-decoration: none;
+            border-radius: 5px;
+            margin: 20px 0;
+          }
+          .footer { margin-top: 30px; font-size: 12px; color: #666; }
+        </style>
       </head>
-      <body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;">
-        <div style="max-width: 600px; margin: 0 auto; padding: 20px;">
-          <div style="background-color: #f9fafb; border-radius: 8px; padding: 40px; text-align: center;">
-            <h1 style="color: #111827; margin: 0 0 16px 0; font-size: 24px; font-weight: 600;">
-              Welcome to Luma!
-            </h1>
-            <p style="color: #6b7280; margin: 0 0 32px 0; font-size: 16px; line-height: 1.5;">
-              Thank you for signing up. Please verify your email address to get started.
-            </p>
-            <a href="${verificationUrl}" style="display: inline-block; background-color: #2563eb; color: #ffffff; text-decoration: none; padding: 12px 32px; border-radius: 6px; font-size: 16px; font-weight: 500;">
-              Verify Email Address
-            </a>
-            <p style="color: #9ca3af; margin: 32px 0 0 0; font-size: 14px;">
-              This link will expire in 24 hours.
-            </p>
-            <p style="color: #9ca3af; margin: 16px 0 0 0; font-size: 14px;">
-              If you didn't create an account, you can safely ignore this email.
-            </p>
-          </div>
-          <div style="text-align: center; margin-top: 24px;">
-            <p style="color: #9ca3af; font-size: 12px; margin: 0;">
-              If the button doesn't work, copy and paste this link into your browser:
-            </p>
-            <p style="color: #6b7280; font-size: 12px; margin: 8px 0 0 0; word-break: break-all;">
-              ${verificationUrl}
-            </p>
+      <body>
+        <div class="container">
+          <h2>Welcome to ${APP_NAME}!</h2>
+          <p>Thank you for registering. Please verify your email address to activate your account.</p>
+          <a href="${verifyUrl}" class="button">Verify Email</a>
+          <p>Or copy and paste this link into your browser:</p>
+          <p>${verifyUrl}</p>
+          <p>This link will expire in 24 hours.</p>
+          <div class="footer">
+            <p>If you didn't create an account, you can safely ignore this email.</p>
           </div>
         </div>
       </body>
     </html>
-  `
+  `;
+
+  const text = `
+Welcome to ${APP_NAME}!
+
+Thank you for registering. Please verify your email address to activate your account.
+
+Verification link: ${verifyUrl}
+
+This link will expire in 24 hours.
+
+If you didn't create an account, you can safely ignore this email.
+  `;
 
   await sendEmail({
     to: email,
-    subject: 'Verify your email address - Luma',
+    subject: `Verify your ${APP_NAME} account`,
     html,
-  })
+    text,
+  });
 }
 
 /**
  * Send password reset email
+ * @param email - Recipient email address
+ * @param token - Reset token
  */
-export async function sendPasswordResetEmail(
-  email: string,
-  token: string
-): Promise<void> {
-  // Ensure token is properly encoded for URL
-  const encodedToken = encodeURIComponent(token)
-  const resetUrl = `${process.env.NEXT_PUBLIC_APP_URL}/reset-password?token=${encodedToken}`
+export async function sendPasswordResetEmail(email: string, token: string): Promise<void> {
+  const resetUrl = `${APP_URL}/reset-password?token=${token}`;
 
   const html = `
     <!DOCTYPE html>
     <html>
       <head>
         <meta charset="utf-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Reset Your Password - Luma</title>
+        <style>
+          body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+          .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+          .button {
+            display: inline-block;
+            padding: 12px 24px;
+            background-color: #0070f3;
+            color: white;
+            text-decoration: none;
+            border-radius: 5px;
+            margin: 20px 0;
+          }
+          .warning { background-color: #fff3cd; padding: 10px; border-radius: 5px; margin: 20px 0; }
+          .footer { margin-top: 30px; font-size: 12px; color: #666; }
+        </style>
       </head>
-      <body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;">
-        <div style="max-width: 600px; margin: 0 auto; padding: 20px;">
-          <div style="background-color: #f9fafb; border-radius: 8px; padding: 40px; text-align: center;">
-            <h1 style="color: #111827; margin: 0 0 16px 0; font-size: 24px; font-weight: 600;">
-              Reset Your Password
-            </h1>
-            <p style="color: #6b7280; margin: 0 0 32px 0; font-size: 16px; line-height: 1.5;">
-              We received a request to reset your password. Click the button below to create a new password.
-            </p>
-            <a href="${resetUrl}" style="display: inline-block; background-color: #2563eb; color: #ffffff; text-decoration: none; padding: 12px 32px; border-radius: 6px; font-size: 16px; font-weight: 500;">
-              Reset Password
-            </a>
-            <p style="color: #9ca3af; margin: 32px 0 0 0; font-size: 14px;">
-              This link will expire in 24 hours.
-            </p>
-            <p style="color: #ef4444; margin: 16px 0 0 0; font-size: 14px; font-weight: 500;">
-              If you didn't request a password reset, please ignore this email or contact support if you're concerned.
-            </p>
+      <body>
+        <div class="container">
+          <h2>Password Reset Request</h2>
+          <p>We received a request to reset your password for your ${APP_NAME} account.</p>
+          <a href="${resetUrl}" class="button">Reset Password</a>
+          <p>Or copy and paste this link into your browser:</p>
+          <p>${resetUrl}</p>
+          <div class="warning">
+            <strong>Important:</strong> This link will expire in 1 hour.
           </div>
-          <div style="text-align: center; margin-top: 24px;">
-            <p style="color: #9ca3af; font-size: 12px; margin: 0;">
-              If the button doesn't work, copy and paste this link into your browser:
-            </p>
-            <p style="color: #6b7280; font-size: 12px; margin: 8px 0 0 0; word-break: break-all;">
-              ${resetUrl}
-            </p>
+          <div class="footer">
+            <p>If you didn't request a password reset, you can safely ignore this email. Your password will not be changed.</p>
           </div>
         </div>
       </body>
     </html>
-  `
+  `;
+
+  const text = `
+Password Reset Request
+
+We received a request to reset your password for your ${APP_NAME} account.
+
+Reset link: ${resetUrl}
+
+This link will expire in 1 hour.
+
+If you didn't request a password reset, you can safely ignore this email. Your password will not be changed.
+  `;
 
   await sendEmail({
     to: email,
-    subject: 'Reset your password - Luma',
+    subject: `Reset your ${APP_NAME} password`,
     html,
-  })
+    text,
+  });
 }

@@ -1,204 +1,150 @@
-// =============================================================================
-// Test Setup File
-// =============================================================================
+import '@testing-library/jest-dom';
+import { vi, beforeEach } from 'vitest';
 
-import { vi, beforeEach } from 'vitest'
-import '@testing-library/jest-dom/vitest'
+// Reset rate limiters before each test
+beforeEach(async () => {
+  // Dynamically import to avoid circular dependencies
+  const { resetAllRateLimiters } = await import('@/lib/rate-limit');
+  resetAllRateLimiters();
+});
 
 // Mock environment variables
-;(process.env as any).NODE_ENV = 'test'
-process.env.DATABASE_URL = 'postgresql://test:test@localhost:5432/test'
-process.env.DIRECT_URL = 'postgresql://test:test@localhost:5432/test'
+process.env.DATABASE_URL = 'postgresql://test:test@localhost:5432/test';
+process.env.DIRECT_URL = 'postgresql://test:test@localhost:5432/test';
+process.env.NEXT_PUBLIC_SUPABASE_URL = 'https://test.supabase.co';
+process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = 'test-anon-key';
+process.env.SUPABASE_SERVICE_ROLE_KEY = 'test-service-role-key';
+process.env.ANTHROPIC_API_KEY = 'test-anthropic-key';
+process.env.TUTOR_SKILL_ID = 'test-skill-id';
+process.env.TRIGGER_API_KEY = 'test-trigger-key';
+process.env.TRIGGER_API_URL = 'https://test.trigger.dev';
+process.env.SUPER_ADMIN_EMAIL = 'admin@test.com';
+process.env.SUPER_ADMIN_PASSWORD_HASH = '$2a$10$test.hash';
 
 // Mock Next.js modules
+vi.mock('next/navigation', () => ({
+  useRouter: () => ({
+    push: vi.fn(),
+    replace: vi.fn(),
+    refresh: vi.fn(),
+    back: vi.fn(),
+    forward: vi.fn(),
+    prefetch: vi.fn(),
+  }),
+  usePathname: () => '/',
+  useSearchParams: () => new URLSearchParams(),
+}));
+
 vi.mock('next/headers', () => ({
   cookies: vi.fn(() => ({
     get: vi.fn(),
+    getAll: vi.fn(() => []),
     set: vi.fn(),
     delete: vi.fn(),
   })),
-  headers: vi.fn(() => ({
+  headers: () => ({
     get: vi.fn(),
-  })),
-}))
+  }),
+}));
 
 // Mock Prisma client
 vi.mock('@/lib/prisma', () => ({
   prisma: {
     user: {
+      create: vi.fn(),
       findUnique: vi.fn(),
       findMany: vi.fn(),
-      create: vi.fn(),
       update: vi.fn(),
       delete: vi.fn(),
+      deleteMany: vi.fn(),
     },
-    course: {
-      findUnique: vi.fn(),
-      findMany: vi.fn(),
+    verificationToken: {
       create: vi.fn(),
-      update: vi.fn(),
+      findUnique: vi.fn(),
+      findFirst: vi.fn(),
       delete: vi.fn(),
-    },
-    file: {
-      findUnique: vi.fn(),
-      findMany: vi.fn(),
-      create: vi.fn(),
-      update: vi.fn(),
-      delete: vi.fn(),
-    },
-    learningSession: {
-      findUnique: vi.fn(),
-      findMany: vi.fn(),
-      create: vi.fn(),
-      update: vi.fn(),
+      deleteMany: vi.fn(),
     },
     quota: {
-      findUnique: vi.fn(),
-      findMany: vi.fn(),
       create: vi.fn(),
+      findUnique: vi.fn(),
       update: vi.fn(),
     },
-    subTopicProgress: {
-      findUnique: vi.fn(),
-      findMany: vi.fn(),
-      create: vi.fn(),
-      update: vi.fn(),
-      upsert: vi.fn(),
-    },
-    topicProgress: {
-      findUnique: vi.fn(),
-      findMany: vi.fn(),
-      create: vi.fn(),
-      update: vi.fn(),
-    },
-    topicTest: {
-      findUnique: vi.fn(),
-      findMany: vi.fn(),
-      create: vi.fn(),
-      update: vi.fn(),
-    },
-    extractedImage: {
-      findUnique: vi.fn(),
-      findMany: vi.fn(),
+    userPreference: {
       create: vi.fn(),
     },
-    $queryRaw: vi.fn(),
+    $transaction: vi.fn(async (callback) => {
+      // If it's a callback-based transaction, execute it with mocked tx
+      if (typeof callback === 'function') {
+        const tx = {
+          user: {
+            create: vi.fn().mockImplementation((args: any) => {
+              // Return the mocked user from prisma.user.create
+              const { prisma: prismaMock } = require('@/lib/prisma');
+              const mockedCreate = vi.mocked(prismaMock.user.create) as any;
+              if (mockedCreate.getMockImplementation()) {
+                return mockedCreate(args);
+              }
+              return Promise.resolve(args.data);
+            }),
+            update: vi.fn(),
+          },
+          verificationToken: {
+            create: vi.fn().mockResolvedValue({
+              id: 'token-123',
+              userId: 'user-123',
+              token: 'verification-token',
+              type: 'EMAIL_VERIFICATION',
+              expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+              createdAt: new Date(),
+            }),
+            delete: vi.fn(),
+            deleteMany: vi.fn(),
+          },
+          quota: {
+            create: vi.fn().mockResolvedValue({
+              id: 'quota-123',
+              userId: 'user-123',
+              aiInteractions: 500,
+              resetAt: new Date(),
+              createdAt: new Date(),
+              updatedAt: new Date(),
+            }),
+          },
+          userPreference: {
+            create: vi.fn().mockResolvedValue({
+              id: 'pref-123',
+              userId: 'user-123',
+              uiLocale: 'en',
+              explainLocale: 'en',
+              createdAt: new Date(),
+              updatedAt: new Date(),
+            }),
+          },
+        };
+        return await callback(tx);
+      }
+      // If it's an array of promises, execute them
+      return Promise.all(callback);
+    }),
   },
-  default: {
-    user: {
-      findUnique: vi.fn(),
-      findMany: vi.fn(),
-      create: vi.fn(),
-      update: vi.fn(),
-      delete: vi.fn(),
-    },
-  },
-}))
+}));
 
-// Mock Supabase client
-vi.mock('@/lib/supabase/client', () => ({
-  createClient: vi.fn(() => ({
+// Mock Supabase
+vi.mock('@/lib/supabase/server', () => ({
+  createClient: () => ({
     auth: {
-      signIn: vi.fn(),
-      signOut: vi.fn(),
       getSession: vi.fn(),
+      signOut: vi.fn(),
     },
-    storage: {
-      from: vi.fn(() => ({
-        upload: vi.fn(),
-        download: vi.fn(),
-        createSignedUrl: vi.fn(),
-      })),
+  }),
+}));
+
+vi.mock('@/lib/supabase/client', () => ({
+  createClient: () => ({
+    auth: {
+      getSession: vi.fn(),
+      signOut: vi.fn(),
     },
-  })),
-}))
-
-// Mock OpenRouter AI client
-vi.mock('@/lib/ai', () => ({
-  generateExplanation: vi.fn(),
-  generateTestQuestions: vi.fn(),
-  extractKnowledgeStructure: vi.fn(),
-}))
-
-// Mock Mathpix client
-vi.mock('@/lib/ai/mathpix', () => ({
-  recognizeFormula: vi.fn(),
-}))
-
-// Mock API client
-vi.mock('@/lib/api/client', () => ({
-  apiClient: {
-    get: vi.fn().mockResolvedValue({}),
-    post: vi.fn().mockResolvedValue({}),
-    put: vi.fn().mockResolvedValue({}),
-    delete: vi.fn().mockResolvedValue({}),
-  },
-}))
-
-// Reset all mocks before each test
-beforeEach(() => {
-  vi.clearAllMocks()
-})
-
-// Global test utilities
-export const mockUser = {
-  id: 'user-1',
-  email: 'test@example.com',
-  role: 'STUDENT' as const,
-  emailConfirmedAt: new Date(),
-  createdAt: new Date(),
-  updatedAt: new Date(),
-  passwordHash: 'hashed-password',
-  failedLoginAttempts: 0,
-  lockedUntil: null,
-  lastLoginAt: new Date(),
-}
-
-export const mockCourse = {
-  id: 'course-1',
-  userId: 'user-1',
-  name: 'Test Course',
-  school: 'Test University',
-  term: 'Fall 2024',
-  createdAt: new Date(),
-  updatedAt: new Date(),
-}
-
-export const mockFile = {
-  id: 'file-1',
-  courseId: 'course-1',
-  name: 'test.pdf',
-  type: 'LECTURE' as const,
-  pageCount: 10,
-  fileSize: BigInt(1000000),
-  isScanned: false,
-  status: 'READY' as const,
-  storagePath: 'files/test.pdf',
-  structureStatus: 'READY' as const,
-  structureError: null,
-  extractedAt: new Date(),
-  createdAt: new Date(),
-  updatedAt: new Date(),
-}
-
-export const mockLearningSession = {
-  id: 'session-1',
-  userId: 'user-1',
-  fileId: 'file-1',
-  status: 'IN_PROGRESS' as const,
-  currentTopicIndex: 0,
-  currentSubIndex: 0,
-  currentPhase: 'EXPLAINING' as const,
-  startedAt: new Date(),
-  lastActiveAt: new Date(),
-  completedAt: null,
-}
-
-export const mockQuota = {
-  id: 'quota-1',
-  userId: 'user-1',
-  bucket: 'LEARNING_INTERACTIONS' as const,
-  used: 10,
-  limit: 150,
-  resetAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 days from now
-}
+  }),
+}));

@@ -1,82 +1,80 @@
-'use client'
+'use client';
 
-import { useMemo } from 'react'
-import { cn } from '@/lib/utils'
-import { getPasswordStrength } from '@/lib/password'
+import React from 'react';
+import { Progress } from '@/components/ui/progress';
+import { cn } from '@/lib/utils';
 
 interface PasswordStrengthIndicatorProps {
-  password: string
-  showLabel?: boolean
-  className?: string
+  password: string;
 }
 
-export function PasswordStrengthIndicator({
-  password,
-  showLabel = true,
-  className,
-}: PasswordStrengthIndicatorProps) {
-  const strength = useMemo(() => {
-    if (!password) return null
-    return getPasswordStrength(password)
-  }, [password])
+type PasswordStrength = 'weak' | 'medium' | 'strong';
 
-  if (!strength) return null
+function calculatePasswordStrength(password: string): {
+  strength: PasswordStrength;
+  score: number;
+} {
+  let score = 0;
 
-  const getStrengthColor = () => {
-    switch (strength) {
-      case 'weak':
-        return 'text-red-600'
-      case 'medium':
-        return 'text-yellow-600'
-      case 'strong':
-        return 'text-green-600'
-      default:
-        return 'text-gray-600'
-    }
+  // Length check
+  if (password.length >= 8) score += 25;
+  if (password.length >= 12) score += 25;
+
+  // Character variety checks
+  if (/[A-Z]/.test(password)) score += 15;
+  if (/[a-z]/.test(password)) score += 15;
+  if (/\d/.test(password)) score += 10;
+  if (/[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(password)) score += 10;
+
+  // Determine strength
+  let strength: PasswordStrength = 'weak';
+  if (score >= 70) {
+    strength = 'strong';
+  } else if (score >= 40) {
+    strength = 'medium';
   }
 
-  const getStrengthValue = () => {
-    switch (strength) {
-      case 'weak':
-        return 33
-      case 'medium':
-        return 66
-      case 'strong':
-        return 100
-      default:
-        return 0
-    }
-  }
+  return { strength, score };
+}
 
-  const getStrengthBarColor = () => {
-    switch (strength) {
-      case 'weak':
-        return 'bg-red-600'
-      case 'medium':
-        return 'bg-yellow-600'
-      case 'strong':
-        return 'bg-green-600'
-      default:
-        return 'bg-gray-600'
-    }
-  }
+export function PasswordStrengthIndicator({ password }: PasswordStrengthIndicatorProps) {
+  if (!password) return null;
+
+  const { strength, score } = calculatePasswordStrength(password);
+
+  const strengthConfig = {
+    weak: {
+      label: 'Weak',
+      color: 'text-red-600',
+      bgColor: 'bg-red-600',
+    },
+    medium: {
+      label: 'Medium',
+      color: 'text-yellow-600',
+      bgColor: 'bg-yellow-600',
+    },
+    strong: {
+      label: 'Strong',
+      color: 'text-green-600',
+      bgColor: 'bg-green-600',
+    },
+  };
+
+  const config = strengthConfig[strength];
 
   return (
-    <div className={cn('space-y-2', className)}>
-      <div className="relative h-2 w-full overflow-hidden rounded-full bg-gray-200">
+    <div className="space-y-2">
+      <div className="flex items-center justify-between">
+        <span className="text-sm text-muted-foreground">Password strength:</span>
+        <span className={cn('text-sm font-medium', config.color)}>{config.label}</span>
+      </div>
+      <div className="relative">
+        <Progress value={score} className="h-2" />
         <div
-          className={cn(
-            'h-full rounded-full transition-all duration-300',
-            getStrengthBarColor()
-          )}
-          style={{ width: `${getStrengthValue()}%` }}
+          className={cn('absolute inset-0 h-2 rounded-full transition-all', config.bgColor)}
+          style={{ width: `${score}%` }}
         />
       </div>
-      {showLabel && (
-        <p className={cn('text-sm font-medium capitalize', getStrengthColor())}>
-          Password strength: {strength}
-        </p>
-      )}
     </div>
-  )
+  );
 }

@@ -9,10 +9,9 @@
 
 ```
 User 1:N Course 1:N File 1:N TopicGroup 1:N SubTopic
-User 1:N LearningSession 1:N TopicProgress
-                         1:N SubTopicProgress
-                         1:N ExplanationCache (讲解缓存)
-                         1:N QACache (问答缓存)
+User 1:N LearningSession 1:N SubTopicProgress
+SubTopic 1:1 SubTopicCache (讲解+测试缓存)
+SubTopic 1:N QAMessage (问答记录)
 User 1:N Quota
 User 1:1 UserPreference
 User 1:N VerificationToken
@@ -55,12 +54,7 @@ Admin (独立账户体系)
 - 登录失败处理: 连续失败 5 次后锁定账户 30 分钟
 - 会话管理: httpOnly Cookie，有效期 7 天；勾选"记住我"延长至 30 天
 
-## 5. 数据结构建议 (Data Schema)
-
-- User: { id, email, password_hash, role, created_at, updated_at, email_confirmed_at, last_login_at, failed_login_attempts, locked_until }
-- VerificationToken: { id, user_id, token, type (email_verify | password_reset), expires_at, created_at }
-
-## 6. MVP 范围 vs 未来扩展
+## 5. MVP 范围 vs 未来扩展
 
 - **MVP**: 邮箱密码登录、注册、邮箱验证、密码重置、登出
 - **Future**: OAuth 登录 (Google/GitHub)、双因素认证
@@ -92,11 +86,7 @@ Admin (独立账户体系)
 - 删除课程需二次确认 (输入课程名)
 - 删除课程级联删除: 所有文件、AI讲解、AI问答
 
-## 5. 数据结构建议 (Data Schema)
-
-- Course: { id, user_id, name, school, term, created_at, updated_at }
-
-## 6. MVP 范围 vs 未来扩展
+## 5. MVP 范围 vs 未来扩展
 
 - **MVP**: 课程 CRUD、数量限制
 - **Future**: 课程归档、课程模板、课程分享
@@ -125,7 +115,7 @@ Admin (独立账户体系)
 ## 4. 业务规则 (Business Rules)
 
 - 文件类型: MVP 阶段仅支持 Lecture，上传时自动设置
-- 单文件大小: ≤200MB
+- 单文件大小: ≤500MB
 - 单文件页数: ≤500 页
 - 单课程文件数: ≤30 个
 - 用户总存储: ≤5GB
@@ -134,11 +124,7 @@ Admin (独立账户体系)
 - 文件状态流转: uploading → processing → ready/failed
 - 扫描件检测逻辑：后端处理时使用 pdf-parse 提取文本，若提取文本字符数 < 页数 × 100，则判定为扫描件
 
-## 5. 数据结构建议 (Data Schema)
-
-- File: { id, course_id, name, type, page_count, file_size, is_scanned, status (uploading | processing | ready | failed), storage_path, created_at }
-
-## 6. MVP 范围 vs 未来扩展
+## 5. MVP 范围 vs 未来扩展
 
 - **MVP**: PDF 上传 (仅 Lecture 类型)、文件列表、删除、扫描件检测
 - **Future**: 多文件类型支持 (Homework/Exam/Other)、按类型分组展示、支持更多格式 (PPT/Word)、文件预览缩略图
@@ -181,39 +167,9 @@ Admin (独立账户体系)
 - 提取超时：5 分钟后标记 FAILED，支持手动重试
 - 重试时从头开始提取，清除之前的部分数据
 
-### 技术选型
+## 5. MVP 范围 vs 未来扩展
 
-- PDF 存储与分析：Claude File API
-- 大纲提取模型：Claude 3.5 Sonnet
-
-## 5. 数据结构建议 (Data Schema)
-
-### 知识结构
-
-- TopicGroup: { id, file_id, index, title, page_start, page_end }
-- SubTopic: { id, topic_group_id, index, title, page_start, page_end }
-
-### File 表扩展
-
-- 新增字段: claude_file_id, structure_status (PENDING|PROCESSING|READY|FAILED), structure_error, extracted_at
-
-## 6. API 端点
-
-| Method | Path                           | 说明             |
-| ------ | ------------------------------ | ---------------- |
-| POST   | `/api/files/:id/extract/retry` | 重试知识结构提取 |
-
-## 7. 错误码
-
-| 错误码                   | 说明               |
-| ------------------------ | ------------------ |
-| EXTRACT_STRUCTURE_FAILED | 知识结构提取失败   |
-| EXTRACT_ALREADY_RUNNING  | 提取任务正在进行中 |
-| EXTRACT_PDF_TOO_LARGE    | PDF 页数超过限制   |
-
-## 8. MVP 范围 vs 未来扩展
-
-- **MVP**: Claude File API 存储、大纲提取、支持扫描件、失败重试
+- **MVP**: 大纲提取、支持扫描件、失败重试
 - **Future**: 用户手动调整知识结构、知识点合并/拆分、增量更新
 
 ---
@@ -222,12 +178,12 @@ Admin (独立账户体系)
 
 ## 1. 业务目标 (Context)
 
-AI 导师系统性地讲解 PDF 课件内容，通过分层讲解、测试确认的学习闭环，帮助学生高效理解和掌握课程资料。
+基于 **Claude Agent Skills API** 实现 AI 导师讲课功能。通过上传自定义 Skill（courseware-tutor）到 Claude，利用其 code execution 环境和多轮对话能力，实现边讲边测的交互式学习体验。
 
 ## 2. 角色与权限 (Roles)
 
 - **学生 (已验证)**: 使用讲课功能 (受配额限制)，只能访问自己上传的文件和学习会话
-- **管理员**: 查看学习会话统计
+- **管理员**: 查看学习会话统计、管理 Skill 版本
 
 ## 3. 功能需求 (Requirements)
 
@@ -237,101 +193,133 @@ AI 导师系统性地讲解 PDF 课件内容，通过分层讲解、测试确认
 - [ ] 开始/恢复讲课：点击"开始讲课"进入单 PDF 讲课模式，自动恢复上次进度
 - [ ] 前置检查：知识结构未就绪时禁用"开始讲课"按钮，显示提取状态
 
-### 3.2 分层讲解
+### 3.2 边讲边测的交互流程
 
-- [ ] 子知识点讲解：按顺序逐个讲解，包含动机、直觉、数学、理论、应用五个层次
-- [ ] 轻量确认：每个子知识点讲完后显示"理解了"按钮
+教学流程由 `courseware-tutor` Skill 控制，核心模式：**讲解 SubTopic → 测试 → 通过后继续**
 
-### 3.3 知识点测试
+- [ ] 讲解生成：调用 Claude API + Skill，AI 自行决定讲解内容和深度
+- [ ] 讲解缓存：首次生成后缓存到 SubTopicCache，再次进入直接读取
+- [ ] 即时测试：Skill 返回讲解内容 + 对应的多选题，前端在讲解内容下方渲染**测试 UI**
+- [ ] 测试通过：通过后进入下一个 SubTopic
+- [ ] 测试失败：显示解析，可选择重新讲解或重试测试
 
-- [ ] 测试生成：所有子知识点讲完后，首次点击"开始测试"时生成题目并缓存
-- [ ] 题目数量：每个总知识点 3 题
-- [ ] 通过条件：必须答完所有题目，≥ 2/3 题正确即通过
-- [ ] 单题跳过：同一题答错 3 次后可跳过（视为答错）
-- [ ] 薄弱点标记：总知识点内累计答错 ≥ 3 次
+### 3.3 测试 UI 组件
 
-### 3.4 进度追踪
+测试 UI 显示在讲解内容的**下方**，作为同一界面的一部分：
 
-- [ ] 进度恢复：以 currentTopicIndex + currentSubIndex + currentPhase 为准
-- [ ] 状态保留：已确认的子知识点、已回答的测试题状态保留
+```
+┌─────────────────────────────────┐
+│  讲解内容区                      │
+│  (markdown/latex 渲染)           │
+├─────────────────────────────────┤
+│  测试 UI                         │
+│  ┌─ 题干 ─────────────────────┐ │
+│  │ 以下哪些场景适合...？       │ │
+│  └─────────────────────────────┘ │
+│  □ A. 选项1                      │
+│  □ B. 选项2                      │
+│  ☑ C. 选项3                      │
+│  □ D. 选项4                      │
+│  [提交答案]                      │
+└─────────────────────────────────┘
+```
+
+- [ ] 题目展示区：显示多选题题干和选项（A/B/C/D）
+- [ ] 选项交互：点击选项切换选中/取消状态，支持多选
+- [ ] 提交按钮：提交答案进行判定（**前端本地判定，无需调用 API**）
+- [ ] 结果反馈：
+  - 正确：显示确认 + "继续"按钮
+  - 错误：显示正确答案 + 解析 + "重试"/"重新讲解"按钮
+
+### 3.4 多选题设计规则
+
+由 Skill 控制生成规则：
+
+- 选项数量：4 个选项（A/B/C/D）
+- 正确答案：2-3 个正确选项（必须全部选对才算通过）
+- 题目原则（写入 SKILL.md）：
+  - ⚠️ **禁止直接回忆题**：答案不能直接从讲解内容中复制粘贴得出
+  - ✅ **必须需要推理/应用**：基于讲解内容进行推理、判断或应用到新场景
+
+### 3.5 进度追踪
+
+- [ ] 进度恢复：以 `currentTopicIndex + currentSubIndex` 为准
+- [ ] Container 复用：同一学习会话内复用 Claude container，保持上下文
+- [ ] 状态保留：已通过的 SubTopic 状态保留，重新进入时从当前 SubTopic 继续
+- [ ] 缓存读取：已缓存的 SubTopic 直接显示，无需重新调用 AI
 - [ ] 多设备支持：允许多设备学习同一文件，进度以最后提交为准
+
+### 3.6 问答功能
+
+问答对话框显示在讲解内容的**右侧**，与讲课共用同一个 Claude container 上下文。
+
+**布局：**
+
+```
+┌───────────────────────────────┬─────────────────────┐
+│  讲解内容区                    │  问答对话框          │
+│  (markdown/latex 渲染)         │  ┌─────────────────┐│
+│                               │  │ 用户: 为什么...？││
+│  ───────────────────────────  │  │ AI: 因为...     ││
+│  测试 UI                       │  │ 用户: 那如果...？││
+│  □ A. 选项1                    │  │ AI: 这种情况... ││
+│  ...                          │  └─────────────────┘│
+│                               │  [输入问题...]       │
+└───────────────────────────────┴─────────────────────┘
+```
+
+**功能需求：**
+
+- [ ] 问答入口：讲解页面右侧固定显示问答对话框
+- [ ] 上下文共享：问答使用与讲课相同的 Claude container，AI 能理解当前讲解内容
+- [ ] 问答绑定：每个 SubTopic 有独立的问答对话框，切换 SubTopic 时切换对应的问答记录
+- [ ] 问答缓存：问答记录持久化存储，重新进入时恢复历史对话
+- [ ] 问答限制：单个 SubTopic 最多 20 条问答记录
+
+**交互流程：**
+
+1. 用户在右侧对话框输入问题
+2. 调用 Claude API（复用 container），AI 基于当前讲解上下文回答
+3. 问答记录保存到数据库
+4. 切换到其他 SubTopic 时，加载该 SubTopic 的问答记录
 
 ## 4. 业务规则 (Business Rules)
 
 ### 配额规则
 
-| 操作       | 配额桶         | 扣费规则                          |
-| ---------- | -------------- | --------------------------------- |
-| 生成讲解   | aiInteractions | 每次扣 1 次（重新获取也扣费）     |
-| 生成测试题 | aiInteractions | 首次生成扣 1 次（缓存后不重复扣） |
+| 操作              | 配额桶         | 扣费规则                                |
+| ----------------- | -------------- | --------------------------------------- |
+| 讲解生成          | aiInteractions | 首次生成扣 1 次，缓存命中不扣           |
+| 重新讲解          | aiInteractions | 扣 1 次（用户主动请求重新讲解时）       |
+| 问答              | aiInteractions | 每次问答扣 1 次                         |
 
 - 统一使用 `aiInteractions` 配额桶，默认 500 次/月
+- 每个 SubTopic 首次学习消耗 1 次配额，缓存命中时不消耗
+- 问答每次交互扣 1 次配额
 - 管理后台通过 AIUsageLog 追踪各功能的详细使用情况（见模块 8）
 
-### 知识点规则
+### 讲解与测试规则
 
-- 每个知识点统一采用完整讲解模式
-- 测试题数：每个总知识点 3 题
-- 通过条件：≥ 2 题正确
+讲解内容和测试题由 Skill 生成，讲解方式由 AI 自行决定。
 
-### 分层讲解结构
-
-每个子知识点按以下五层结构讲解：
-
-| 层次 | 说明                             | 输出要求             |
-| ---- | -------------------------------- | -------------------- |
-| 动机 | 为什么要学这个？解决什么问题？   | 1-2 段，通俗易懂     |
-| 直觉 | 核心思想是什么？用类比/图示解释  | 1-2 段，配合简单示例 |
-| 数学 | 相关公式、定理、推导（如有）     | LaTeX 格式，逐步推导 |
-| 理论 | 严谨定义、性质、证明要点         | 结构化列表           |
-| 应用 | 实际应用场景、代码示例、练习建议 | 1-2 个具体例子       |
-
-- 所有知识点均采用五层完整讲解
+**测试通过规则：**
+- 每个 SubTopic 配 1 道多选题
+- 必须选出**所有正确选项**才算通过（部分正确不算）
+- 单题最多尝试 3 次，超过后可选择：
+  - 「重新讲解」：重新调用 Skill 生成讲解（扣配额，更新缓存）
+  - 「跳过」：标记为未掌握，继续下一个 SubTopic
 
 ### 其他规则
 
 - 讲课功能仅对已验证邮箱的用户开放
 - 扫描件 PDF 正常支持讲课功能（Claude File API 原生支持 OCR）
 - 知识结构必须为 READY 状态才能开始讲课
+- Container 超时（默认 30 分钟无活动）后需重新创建
 
-## 5. 数据结构建议 (Data Schema)
+## 5. MVP 范围 vs 未来扩展
 
-### 测试题目
-
-- TopicTest: { id, topic_group_id, index, type, question, options, correct_answer, explanation }
-
-### 学习会话
-
-- LearningSession: { id, user_id, file_id, status, current_topic_index, current_sub_index, current_phase }
-- TopicProgress: { id, session_id, topic_group_id, status, is_weak_point, correct_count, wrong_count, question_attempts }
-- SubTopicProgress: { id, session_id, sub_topic_id, confirmed, confirmed_at }
-
-## 6. API 端点
-
-| Method | Path                              | 说明              |
-| ------ | --------------------------------- | ----------------- |
-| GET    | `/api/files/:id/preview`          | 获取 PDF 预览信息 |
-| POST   | `/api/files/:id/learn/start`      | 开始/恢复讲课     |
-| GET    | `/api/learn/sessions/:id`         | 获取学习会话详情  |
-| POST   | `/api/learn/sessions/:id/explain` | 获取讲解 (SSE)    |
-| POST   | `/api/learn/sessions/:id/confirm` | 确认理解          |
-| POST   | `/api/learn/sessions/:id/test`    | 开始/获取测试     |
-| POST   | `/api/learn/sessions/:id/answer`  | 提交答案          |
-| POST   | `/api/learn/sessions/:id/skip`    | 跳过当前题        |
-
-## 7. 错误码
-
-| 错误码                    | 说明               |
-| ------------------------- | ------------------ |
-| TUTOR_STRUCTURE_NOT_READY | 知识结构未提取完成 |
-| TUTOR_SESSION_NOT_FOUND   | 学习会话不存在     |
-| TUTOR_SESSION_FORBIDDEN   | 无权访问该学习会话 |
-| TUTOR_QUOTA_EXCEEDED      | 配额已用完         |
-
-## 8. MVP 范围 vs 未来扩展
-
-- **MVP**: 单 PDF 讲课、分层讲解、知识点测试、进度追踪、薄弱点标记
-- **Future**: 课程级别讲课（跨多个 PDF）、知识图谱关联、语音讲解 (TTS)、间隔重复复习、学习报告
+- **MVP**: Claude Skill 集成、单 PDF 讲课、边讲边测、讲解缓存、进度追踪、SubTopic 级问答
+- **Future**: 课程级别讲课（跨多个 PDF）、知识图谱关联、语音讲解 (TTS)、间隔重复复习、学习报告、自适应难度调整、Skill A/B 测试
 
 ---
 
@@ -360,13 +348,7 @@ AI 导师系统性地讲解 PDF 课件内容，通过分层讲解、测试确认
 - 配额重置: 每月用户注册日的同一天重置 (如注册日为 1月15日，则每月 15日重置；若当月无此日期则为当月最后一天)
 - 功能使用统计: 通过 AIUsageLog 记录每次 AI 调用的功能类型、token 消耗，供管理后台分析
 
-## 5. 数据结构建议 (Data Schema)
-
-- Quota: { id, user_id, bucket, used, limit, reset_at }
-- QuotaLog: { id, user_id, bucket, change, reason (system_reset | admin_adjust | consume | refund), created_at }
-- AIUsageLog: { id, user_id, feature_type (explain | test | qa), input_tokens, output_tokens, model, created_at }
-
-## 6. MVP 范围 vs 未来扩展
+## 5. MVP 范围 vs 未来扩展
 
 - **MVP**: 配额展示、告警、月度重置
 - **Future**: 配额购买、按用量付费、多配额桶分离管理
@@ -394,11 +376,7 @@ AI 导师系统性地讲解 PDF 课件内容，通过分层讲解、测试确认
 - 语言切换后立即生效，偏好保存至数据库
 - 默认语言: ui_locale 跟随浏览器语言 (不支持则默认 en)，explain_locale 默认 en
 
-## 5. 数据结构建议 (Data Schema)
-
-- UserPreference: { id, user_id, ui_locale, explain_locale, updated_at }
-
-## 6. MVP 范围 vs 未来扩展
+## 5. MVP 范围 vs 未来扩展
 
 - **MVP**: 语言设置 (仅 en/zh)、配额详情
 - **Future**: 多语言支持 (日语/韩语/西班牙语等)、账户删除、主题设置、通知偏好、数据导出
@@ -437,14 +415,7 @@ AI 导师系统性地讲解 PDF 课件内容，通过分层讲解、测试确认
 - 数据展示: 仅聚合统计，不含具体 PDF 内容或用户隐私数据
 - 僵尸任务处理: 检测到后可手动重试或标记失败
 
-## 5. 数据结构建议 (Data Schema)
-
-- Admin: { id, email, password_hash, role (super_admin | admin), created_at, disabled_at }
-- AccessLog: { id, user_id, action_type (login | view_file | use_feature), timestamp }
-- AIUsageLog: { id, user_id, feature_type (explain | test | qa), input_tokens, output_tokens, model, cost, created_at }
-- AuditLog: { id, admin_id, action, target_user_id, details, created_at }
-
-## 6. MVP 范围 vs 未来扩展
+## 5. MVP 范围 vs 未来扩展
 
 - **MVP**: 管理员登录、系统概览、用户访问统计、成本监控、Worker 健康检查、配额调整、用户配额统计、用户文件统计
 - **Future**: 管理员账户管理、系统配置、报表导出

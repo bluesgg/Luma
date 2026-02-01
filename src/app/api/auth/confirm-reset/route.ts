@@ -1,81 +1,87 @@
-import type { NextRequest } from 'next/server'
-import { confirmResetPasswordSchema } from '@/lib/validation'
-import {
-  successResponse,
-  errorResponse,
-  HTTP_STATUS,
-  handleError,
-} from '@/lib/api-response'
-import { ERROR_CODES } from '@/lib/constants'
-import { hashPassword } from '@/lib/password'
-import { validateToken, markTokenAsUsed } from '@/lib/token'
-import prisma from '@/lib/prisma'
-import { logger } from '@/lib/logger'
+import { logger } from '@/lib/logger';
+import { NextRequest } from 'next/server';
+import { prisma } from '@/lib/prisma';
+import { hashPassword } from '@/lib/password';
+import { isTokenExpired } from '@/lib/token';
+import { confirmResetSchema } from '@/lib/validation';
+import { successResponse, errorResponse, ERROR_CODES } from '@/lib/api-response';
+import { requireCsrfToken } from '@/lib/csrf';
 
+/**
+ * POST /api/auth/confirm-reset
+ * Confirm password reset with token and new password
+ */
 export async function POST(request: NextRequest) {
   try {
-    // Parse and validate request body
-    const body = await request.json()
-    const validation = confirmResetPasswordSchema.safeParse(body)
+    // CSRF protection
+    await requireCsrfToken(request);
 
-    if (!validation.success) {
+    // Parse and validate request body
+    const body = await request.json();
+    const validationResult = confirmResetSchema.safeParse(body);
+
+    if (!validationResult.success) {
       return errorResponse(
         ERROR_CODES.VALIDATION_ERROR,
-        'Validation failed',
-        HTTP_STATUS.BAD_REQUEST,
-        validation.error.errors
-      )
+        validationResult.error.issues[0].message,
+        400
+      );
     }
 
-    const { token, password } = validation.data
+    const { token, password } = validationResult.data;
 
-    // Validate token
-    const tokenValidation = await validateToken(token)
+    // Find password reset token
+    const resetToken = await prisma.verificationToken.findUnique({
+      where: { token },
+      include: { user: true },
+    });
 
-    if (!tokenValidation.isValid || !tokenValidation.token) {
-      return errorResponse(
-        ERROR_CODES.AUTH_TOKEN_INVALID,
-        'Invalid or expired reset token',
-        HTTP_STATUS.BAD_REQUEST
-      )
+    if (!resetToken) {
+      return errorResponse(ERROR_CODES.INVALID_TOKEN, 'Invalid or expired reset token.', 400);
     }
 
-    // Check that token is for password reset
-    if (tokenValidation.token.type !== 'PASSWORD_RESET') {
-      return errorResponse(
-        ERROR_CODES.AUTH_TOKEN_INVALID,
-        'Invalid token type',
-        HTTP_STATUS.BAD_REQUEST
-      )
+    // Check if token is expired
+    if (isTokenExpired(resetToken.expiresAt)) {
+      // Delete expired token
+      await prisma.verificationToken.delete({
+        where: { token: resetToken.token },
+      });
+
+      return errorResponse(ERROR_CODES.TOKEN_EXPIRED, 'Reset token has expired. Please request a new one.', 400);
+    }
+
+    // Check token type
+    if (resetToken.type !== 'PASSWORD_RESET') {
+      return errorResponse(ERROR_CODES.INVALID_TOKEN, 'Invalid token type.', 400);
     }
 
     // Hash new password
-    const passwordHash = await hashPassword(password)
+    const newPasswordHash = await hashPassword(password);
 
-    // Update user password and reset account lock
-    const user = await prisma.user.update({
-      where: { id: tokenValidation.token.userId },
-      data: {
-        passwordHash,
-        failedLoginAttempts: 0,
-        lockedUntil: null,
-      },
-      select: {
-        id: true,
-        email: true,
-      },
-    })
-
-    // Mark token as used
-    await markTokenAsUsed(tokenValidation.token.id)
-
-    logger.info('Password reset successfully', { userId: user.id })
+    // Update user password, reset failed login count, clear lockout, and delete token in a transaction
+    await prisma.$transaction([
+      prisma.user.update({
+        where: { id: resetToken.userId },
+        data: {
+          passwordHash: newPasswordHash,
+          failedLoginCount: 0,
+          lockedUntil: null,
+        },
+      }),
+      prisma.verificationToken.delete({
+        where: { token: resetToken.token },
+      }),
+    ]);
 
     return successResponse({
-      message:
-        'Password reset successful. Please log in with your new password.',
-    })
+      message: 'Password reset successfully. You can now log in with your new password.',
+    });
   } catch (error) {
-    return handleError(error)
+    logger.error('Password reset confirmation error:', error);
+    return errorResponse(
+      ERROR_CODES.INTERNAL_ERROR,
+      'An error occurred during password reset. Please try again.',
+      500
+    );
   }
 }

@@ -1,93 +1,97 @@
-'use client'
+'use client';
 
-import { useState } from 'react'
-import { useRouter } from 'next/navigation'
-import { useForm } from 'react-hook-form'
-import { zodResolver } from '@hookform/resolvers/zod'
-import { z } from 'zod'
-import { Eye, EyeOff, Loader2 } from 'lucide-react'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import { Alert, AlertDescription } from '@/components/ui/alert'
-import { PasswordStrengthIndicator } from '@/components/auth/password-strength-indicator'
-import { confirmResetPasswordSchema } from '@/lib/validation'
-import { useToast } from '@/hooks/use-toast'
+import React, { useState, useEffect } from 'react';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { useRouter, useSearchParams } from 'next/navigation';
+import Link from 'next/link';
+import { confirmResetSchema } from '@/lib/validation';
+import type { z } from 'zod';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { useCsrf } from '@/hooks/use-csrf';import { PasswordStrengthIndicator } from './password-strength-indicator';
 
-const resetFormSchema = confirmResetPasswordSchema
-  .extend({
-    confirmPassword: z.string(),
-  })
-  .refine((data) => data.password === data.confirmPassword, {
-    message: "Passwords don't match",
-    path: ['confirmPassword'],
-  })
+type ResetPasswordFormData = z.infer<typeof confirmResetSchema>;
 
-type ResetPasswordFormData = z.infer<typeof resetFormSchema>
-
-interface ResetPasswordFormProps {
-  token: string
-}
-
-export function ResetPasswordForm({ token }: ResetPasswordFormProps) {
-  const router = useRouter()
-  const { toast } = useToast()
-  const [showPassword, setShowPassword] = useState(false)
-  const [showConfirmPassword, setShowConfirmPassword] = useState(false)
-  const [isLoading, setIsLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [success, setSuccess] = useState(false)
+export function ResetPasswordForm() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const [isLoading, setIsLoading] = useState(false);
+  const { csrfToken } = useCsrf();  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState(false);
+  const [token, setToken] = useState<string | null>(null);
 
   const {
     register,
     handleSubmit,
-    watch,
     formState: { errors },
+    watch,
+    setValue,
   } = useForm<ResetPasswordFormData>({
-    resolver: zodResolver(resetFormSchema),
+    resolver: zodResolver(confirmResetSchema),
     defaultValues: {
-      token,
+      token: '',
+      password: '',
+      confirmPassword: '',
     },
-  })
+  });
 
-  const password = watch('password')
+  const password = watch('password');
+
+  useEffect(() => {
+    const tokenParam = searchParams.get('token');
+    if (tokenParam) {
+      setToken(tokenParam);
+      setValue('token', tokenParam);
+    } else {
+      setError('Invalid or missing reset token. Please request a new password reset.');
+    }
+  }, [searchParams, setValue]);
 
   const onSubmit = async (data: ResetPasswordFormData) => {
     try {
-      setIsLoading(true)
-      setError(null)
+      setIsLoading(true);
+      setError(null);
 
       const response = await fetch('/api/auth/confirm-reset', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          token: data.token,
-          password: data.password,
-        }),
-      })
+        headers: {
+          'Content-Type': 'application/json',
+          'x-csrf-token': csrfToken,
+        },
+        body: JSON.stringify(data),
+      });
 
-      const result = await response.json()
+      const result = await response.json();
 
-      if (!response.ok) {
-        setError(result.error?.message || 'Failed to reset password')
-        return
+      if (!result.success) {
+        setError(result.error?.message || 'Password reset failed. Please try again.');
+        return;
       }
 
-      setSuccess(true)
-      toast({
-        title: 'Success',
-        description: 'Your password has been reset',
-      })
+      setSuccess(true);
 
       // Redirect to login after 2 seconds
       setTimeout(() => {
-        router.push('/login')
-      }, 2000)
-    } catch {
-      setError('An unexpected error occurred')
+        router.push('/login');
+      }, 2000);
+    } catch (err) {
+      setError('An unexpected error occurred. Please try again.');
     } finally {
-      setIsLoading(false)
+      setIsLoading(false);
     }
+  };
+
+  if (!token && !error) {
+    return (
+      <Alert variant="destructive">
+        <AlertDescription>
+          Loading reset token...
+        </AlertDescription>
+      </Alert>
+    );
   }
 
   if (success) {
@@ -95,87 +99,68 @@ export function ResetPasswordForm({ token }: ResetPasswordFormProps) {
       <div className="space-y-4">
         <Alert>
           <AlertDescription>
-            Your password has been reset successfully. You&apos;ll be redirected
-            to the login page shortly.
+            Password reset successful! Redirecting to login...
           </AlertDescription>
         </Alert>
       </div>
-    )
+    );
   }
 
   return (
-    <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
+    <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
       {error && (
         <Alert variant="destructive">
           <AlertDescription>{error}</AlertDescription>
         </Alert>
       )}
 
+      <div className="space-y-2">
+        <p className="text-sm text-muted-foreground">
+          Enter your new password below.
+        </p>
+      </div>
+
       <input type="hidden" {...register('token')} />
 
       <div className="space-y-2">
         <Label htmlFor="password">New Password</Label>
-        <div className="relative">
-          <Input
-            id="password"
-            type={showPassword ? 'text' : 'password'}
-            placeholder="Create a new password"
-            autoComplete="new-password"
-            {...register('password')}
-            disabled={isLoading}
-          />
-          <button
-            type="button"
-            onClick={() => setShowPassword(!showPassword)}
-            className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700"
-          >
-            {showPassword ? (
-              <EyeOff className="h-4 w-4" />
-            ) : (
-              <Eye className="h-4 w-4" />
-            )}
-          </button>
-        </div>
+        <Input
+          id="password"
+          type="password"
+          placeholder="Create a strong password"
+          {...register('password')}
+          disabled={isLoading || !token}
+        />
         {errors.password && (
-          <p className="text-sm text-red-600">{errors.password.message}</p>
+          <p className="text-sm text-destructive">{errors.password.message}</p>
         )}
-        {password && <PasswordStrengthIndicator password={password} />}
+        <PasswordStrengthIndicator password={password} />
       </div>
 
       <div className="space-y-2">
-        <Label htmlFor="confirmPassword">Confirm New Password</Label>
-        <div className="relative">
-          <Input
-            id="confirmPassword"
-            type={showConfirmPassword ? 'text' : 'password'}
-            placeholder="Confirm your new password"
-            autoComplete="new-password"
-            {...register('confirmPassword')}
-            disabled={isLoading}
-          />
-          <button
-            type="button"
-            onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-            className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700"
-          >
-            {showConfirmPassword ? (
-              <EyeOff className="h-4 w-4" />
-            ) : (
-              <Eye className="h-4 w-4" />
-            )}
-          </button>
-        </div>
+        <Label htmlFor="confirmPassword">Confirm Password</Label>
+        <Input
+          id="confirmPassword"
+          type="password"
+          placeholder="Confirm your password"
+          {...register('confirmPassword')}
+          disabled={isLoading || !token}
+        />
         {errors.confirmPassword && (
-          <p className="text-sm text-red-600">
-            {errors.confirmPassword.message}
-          </p>
+          <p className="text-sm text-destructive">{errors.confirmPassword.message}</p>
         )}
       </div>
 
-      <Button type="submit" className="w-full" disabled={isLoading}>
-        {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+      <Button type="submit" className="w-full" disabled={isLoading || !token}>
         {isLoading ? 'Resetting password...' : 'Reset password'}
       </Button>
+
+      <div className="text-center text-sm">
+        Remember your password?{' '}
+        <Link href="/login" className="text-primary hover:underline">
+          Sign in
+        </Link>
+      </div>
     </form>
-  )
+  );
 }

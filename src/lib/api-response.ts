@@ -1,51 +1,52 @@
-import { NextResponse } from 'next/server'
-import { ZodError } from 'zod'
-import { ERROR_CODES } from './constants'
-import { logger } from './logger'
+import { NextResponse } from 'next/server';
 
 /**
- * Standard API response format
+ * Standardized API response helpers
+ * Ensures consistent response format across all endpoints
  */
-export type ApiSuccessResponse<T> = {
-  success: true
-  data: T
+
+export interface ApiSuccessResponse<T = unknown> {
+  success: true;
+  data: T;
 }
 
-export type ApiErrorResponse = {
-  success: false
+export interface ApiErrorResponse {
+  success: false;
   error: {
-    code: string
-    message: string
-    details?: unknown
-  }
+    code: string;
+    message: string;
+  };
 }
 
-export type ApiResponse<T> = ApiSuccessResponse<T> | ApiErrorResponse
+export type ApiResponse<T = unknown> = ApiSuccessResponse<T> | ApiErrorResponse;
 
 /**
- * Success response helper
+ * Create a success response
+ * @param data - Data to include in the response
+ * @param status - HTTP status code (default: 200)
+ * @returns NextResponse with standardized success format
  */
-export function successResponse<T>(
-  data: T,
-  status: number = 200
-): NextResponse<ApiSuccessResponse<T>> {
+export function successResponse<T>(data: T, status: number = 200): NextResponse<ApiSuccessResponse<T>> {
   return NextResponse.json(
     {
       success: true,
       data,
     },
     { status }
-  )
+  );
 }
 
 /**
- * Error response helper
+ * Create an error response
+ * @param code - Error code (e.g., 'VALIDATION_ERROR', 'UNAUTHORIZED')
+ * @param message - User-friendly error message
+ * @param status - HTTP status code (default: 400)
+ * @returns NextResponse with standardized error format
  */
 export function errorResponse(
   code: string,
   message: string,
-  status: number = 400,
-  details?: unknown
+  status: number = 400
 ): NextResponse<ApiErrorResponse> {
   return NextResponse.json(
     {
@@ -53,74 +54,43 @@ export function errorResponse(
       error: {
         code,
         message,
-        details,
       },
     },
     { status }
-  )
+  );
 }
 
 /**
- * Handle Zod validation errors
+ * Common error responses
  */
-export function validationErrorResponse(
-  error: ZodError
-): NextResponse<ApiErrorResponse> {
-  return errorResponse(
-    ERROR_CODES.VALIDATION_ERROR,
-    'Validation failed',
-    400,
-    error.errors
-  )
-}
+export const ERROR_CODES = {
+  // Validation errors
+  VALIDATION_ERROR: 'VALIDATION_ERROR',
+  INVALID_INPUT: 'INVALID_INPUT',
 
-/**
- * Handle generic errors
- */
-export function handleError(error: unknown): NextResponse<ApiErrorResponse> {
-  logger.error('API Error', error)
+  // Authentication errors
+  INVALID_CREDENTIALS: 'INVALID_CREDENTIALS',
+  UNAUTHORIZED: 'UNAUTHORIZED',
+  EMAIL_NOT_VERIFIED: 'EMAIL_NOT_VERIFIED',
+  ACCOUNT_LOCKED: 'ACCOUNT_LOCKED',
 
-  if (error instanceof ZodError) {
-    return validationErrorResponse(error)
-  }
+  // Resource errors
+  NOT_FOUND: 'NOT_FOUND',
+  ALREADY_EXISTS: 'ALREADY_EXISTS',
+  EMAIL_EXISTS: 'EMAIL_EXISTS',
 
-  if (error instanceof Error) {
-    // Check for known error patterns
-    if (error.message.includes('Unauthorized')) {
-      return errorResponse(
-        ERROR_CODES.AUTH_UNAUTHORIZED,
-        'Unauthorized access',
-        401
-      )
-    }
+  // Rate limiting
+  RATE_LIMIT_EXCEEDED: 'RATE_LIMIT_EXCEEDED',
+  TOO_MANY_REQUESTS: 'TOO_MANY_REQUESTS',
 
-    if (error.message.includes('Not found')) {
-      return errorResponse(ERROR_CODES.NOT_FOUND, 'Resource not found', 404)
-    }
+  // Token errors
+  INVALID_TOKEN: 'INVALID_TOKEN',
+  TOKEN_EXPIRED: 'TOKEN_EXPIRED',
 
-    return errorResponse(ERROR_CODES.INTERNAL_SERVER_ERROR, error.message, 500)
-  }
+  // CSRF
+  INVALID_CSRF_TOKEN: 'INVALID_CSRF_TOKEN',
 
-  return errorResponse(
-    ERROR_CODES.INTERNAL_SERVER_ERROR,
-    'An unexpected error occurred',
-    500
-  )
-}
-
-/**
- * Common HTTP status codes
- */
-export const HTTP_STATUS = {
-  OK: 200,
-  CREATED: 201,
-  NO_CONTENT: 204,
-  BAD_REQUEST: 400,
-  UNAUTHORIZED: 401,
-  FORBIDDEN: 403,
-  NOT_FOUND: 404,
-  CONFLICT: 409,
-  UNPROCESSABLE_ENTITY: 422,
-  TOO_MANY_REQUESTS: 429,
-  INTERNAL_SERVER_ERROR: 500,
-} as const
+  // Generic errors
+  INTERNAL_ERROR: 'INTERNAL_ERROR',
+  FORBIDDEN: 'FORBIDDEN',
+} as const;

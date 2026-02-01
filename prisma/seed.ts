@@ -1,110 +1,51 @@
-import { PrismaClient, QuotaBucket } from '@prisma/client'
-import bcrypt from 'bcryptjs'
+/**
+ * Database Seeding Script
+ *
+ * Creates initial data:
+ * - Super admin account (from SUPER_ADMIN_EMAIL env var)
+ */
+
+import { PrismaClient } from '@prisma/client'
+import * as bcrypt from 'bcryptjs'
 
 const prisma = new PrismaClient()
 
 async function main() {
-  console.log('🌱 Starting database seeding...')
+  console.log('🌱 Seeding database...')
 
-  // Create super admin if not exists
-  const superAdminEmail = process.env.SUPER_ADMIN_EMAIL
-  const superAdminPassword = process.env.SUPER_ADMIN_PASSWORD
+  // Get super admin credentials from env
+  const email = process.env.SUPER_ADMIN_EMAIL
+  const passwordHash = process.env.SUPER_ADMIN_PASSWORD_HASH
 
-  // Validate required environment variables
-  if (!superAdminEmail || !superAdminPassword) {
-    console.error('❌ Error: SUPER_ADMIN_EMAIL and SUPER_ADMIN_PASSWORD must be set')
-    console.error('   Please set these environment variables before running seed script')
-    process.exit(1)
+  if (!email || !passwordHash) {
+    throw new Error(
+      'SUPER_ADMIN_EMAIL and SUPER_ADMIN_PASSWORD_HASH must be set in .env file'
+    )
   }
 
-  const existingSuperAdmin = await prisma.admin.findUnique({
-    where: { email: superAdminEmail },
+  // Create or update super admin
+  const superAdmin = await prisma.admin.upsert({
+    where: { email },
+    update: {
+      passwordHash,
+      role: 'SUPER_ADMIN',
+    },
+    create: {
+      email,
+      passwordHash,
+      role: 'SUPER_ADMIN',
+    },
   })
 
-  if (!existingSuperAdmin) {
-    const passwordHash = await bcrypt.hash(superAdminPassword, 10)
-
-    await prisma.admin.create({
-      data: {
-        email: superAdminEmail,
-        passwordHash,
-        role: 'SUPER_ADMIN',
-      },
-    })
-
-    console.log(`✅ Super admin created: ${superAdminEmail}`)
-  } else {
-    console.log(`ℹ️  Super admin already exists: ${superAdminEmail}`)
-  }
-
-  // Create test student user in development
-  if (process.env.NODE_ENV === 'development') {
-    const testEmail = 'student@test.com'
-    const testPassword = process.env.TEST_STUDENT_PASSWORD || 'TestStudent123!'
-
-    const existingStudent = await prisma.user.findUnique({
-      where: { email: testEmail },
-    })
-
-    if (!existingStudent) {
-      const passwordHash = await bcrypt.hash(testPassword, 10)
-
-      const user = await prisma.user.create({
-        data: {
-          email: testEmail,
-          passwordHash,
-          role: 'STUDENT',
-          emailConfirmedAt: new Date(),
-        },
-      })
-
-      // Create default quotas
-      const resetAt = new Date()
-      resetAt.setMonth(resetAt.getMonth() + 1)
-
-      await prisma.quota.createMany({
-        data: [
-          {
-            userId: user.id,
-            bucket: QuotaBucket.LEARNING_INTERACTIONS,
-            used: 0,
-            limit: 150,
-            resetAt,
-          },
-          {
-            userId: user.id,
-            bucket: QuotaBucket.AUTO_EXPLAIN,
-            used: 0,
-            limit: 300,
-            resetAt,
-          },
-        ],
-      })
-
-      // Create user preferences
-      await prisma.userPreference.create({
-        data: {
-          userId: user.id,
-          uiLocale: 'en',
-          explainLocale: 'en',
-        },
-      })
-
-      console.log(`✅ Test student created: ${testEmail}`)
-    } else {
-      console.log(`ℹ️  Test student already exists: ${testEmail}`)
-    }
-  }
-
-  console.log('✅ Database seeding completed!')
+  console.log('✅ Super admin created:', superAdmin.email)
+  console.log('🎉 Seeding completed!')
 }
 
 main()
-  .then(async () => {
-    await prisma.$disconnect()
-  })
-  .catch(async (e) => {
-    console.error('❌ Error during seeding:', e)
-    await prisma.$disconnect()
+  .catch(e => {
+    console.error('❌ Seeding failed:', e)
     process.exit(1)
+  })
+  .finally(async () => {
+    await prisma.$disconnect()
   })

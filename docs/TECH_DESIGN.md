@@ -1,7 +1,7 @@
 # Luma Web - Technical Design Document
 
-> **Version**: 1.0 MVP
-> **Last Updated**: 2026-01-26
+> **Version**: 1.1 MVP
+> **Last Updated**: 2026-01-31
 > **Status**: Draft
 
 ---
@@ -42,9 +42,9 @@ Luma Web is an AI-powered learning management system designed for university stu
 | -------------------- | ------------------------------------------------------ | ---------- |
 | User Authentication  | Email/password auth with verification                  | MVP        |
 | Course Management    | CRUD operations for courses (max 6/user)               | MVP        |
-| File Management      | PDF upload with validation (max 200MB, 500 pages)      | MVP        |
+| File Management      | PDF upload with validation (max 500MB, 500 pages)      | MVP        |
 | AI Interactive Tutor | Two-layer knowledge structure, five-layer explanations | MVP (Core) |
-| Quota Management     | Usage limits (150 interactions/month)                  | MVP        |
+| Quota Management     | Usage limits (500 AI interactions/month)               | MVP        |
 | User Settings        | Language preferences (en/zh)                           | MVP        |
 | Admin Dashboard      | System stats, cost monitoring                          | MVP        |
 
@@ -87,18 +87,15 @@ Luma Web is an AI-powered learning management system designed for university stu
 ┌─────────────────────────┐  ┌─────────────────────────────────────────────────┐
 │     Data Layer          │  │              External Services                   │
 │  ┌──────────────────┐   │  │  ┌─────────────┐  ┌─────────────┐              │
-│  │   PostgreSQL     │   │  │  │  OpenRouter │  │   Mathpix   │              │
-│  │   (Supabase)     │   │  │  │  (AI)       │  │  (Formula)  │              │
-│  │   + Prisma ORM   │   │  │  └─────────────┘  └─────────────┘              │
-│  └──────────────────┘   │  │  ┌─────────────┐  ┌─────────────┐              │
-│  ┌──────────────────┐   │  │  │  Supabase   │  │ Cloudflare  │              │
-│  │   Supabase       │   │  │  │  Auth       │  │    R2       │              │
-│  │   Storage        │   │  │  └─────────────┘  └─────────────┘              │
-│  └──────────────────┘   │  │  ┌─────────────┐                               │
-└─────────────────────────┘  │  │ Trigger.dev │                               │
-                             │  │  (Jobs)     │                               │
-                             │  └─────────────┘                               │
-                             └─────────────────────────────────────────────────┘
+│  │   PostgreSQL     │   │  │  │ Claude API  │  │  Supabase   │              │
+│  │   (Supabase)     │   │  │  │ + Skills +  │  │  Auth       │              │
+│  │   + Prisma ORM   │   │  │  │  File API   │  └─────────────┘              │
+│  └──────────────────┘   │  │  └─────────────┘                               │
+│  ┌──────────────────┐   │  │  ┌─────────────┐                               │
+│  │   Supabase       │   │  │  │ Trigger.dev │                               │
+│  │   Storage        │   │  │  │  (Jobs)     │                               │
+│  └──────────────────┘   │  │  └─────────────┘                               │
+└─────────────────────────┘  └─────────────────────────────────────────────────┘
 ```
 
 ### 2.2 Data Flow
@@ -125,10 +122,8 @@ User Action → Next.js API Route → Auth Middleware → Business Logic → Dat
 | ORM             | Prisma           | 5.22+   | Database access            |
 | Auth            | Supabase Auth    | Latest  | Authentication             |
 | Storage         | Supabase Storage | Latest  | PDF file storage           |
-| Image Storage   | Cloudflare R2    | Latest  | Extracted images           |
 | Background Jobs | Trigger.dev      | v3      | Async processing           |
-| AI              | OpenRouter       | Latest  | LLM API gateway            |
-| Formula OCR     | Mathpix          | Latest  | LaTeX recognition          |
+| AI              | Claude API       | Latest  | LLM + Skills + File API    |
 
 ### 3.2 Frontend Technologies
 
@@ -228,8 +223,8 @@ User Action → Next.js API Route → Auth Middleware → Business Logic → Dat
 │   │
 │   ├── lib/
 │   │   ├── ai/
-│   │   │   ├── index.ts        # AI client
-│   │   │   ├── mathpix.ts      # Mathpix integration
+│   │   │   ├── claude.ts       # Claude API + Skills client
+│   │   │   ├── skill.ts        # Skill management
 │   │   │   └── prompts/        # Prompt templates
 │   │   ├── api/                # API client functions
 │   │   ├── supabase/           # Supabase clients
@@ -248,13 +243,9 @@ User Action → Next.js API Route → Auth Middleware → Business Logic → Dat
 │
 ├── trigger/                    # Trigger.dev jobs
 │   ├── jobs/
-│   │   ├── extract-structure.ts
-│   │   ├── extract-images.ts
+│   │   ├── extract-structure.ts  # Claude File API structure extraction
 │   │   └── quota-reset.ts
 │   └── client.ts
-│
-├── scripts/
-│   └── extract_images.py       # PyMuPDF image extraction
 │
 ├── tests/
 │   ├── unit/
@@ -316,27 +307,28 @@ User Action → Next.js API Route → Auth Middleware → Business Logic → Dat
 ├─────────────────────────────────────────────────────────────────────────────┤
 │                                                                             │
 │  ┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐      │
-│  │   TopicGroup    │ 1:N │    SubTopic     │     │   TopicTest     │      │
-│  │                 ├────►│                 │     │                 │      │
+│  │   TopicGroup    │ 1:N │    SubTopic     │ 1:1 │ SubTopicCache   │      │
+│  │                 ├────►│                 ├────►│                 │      │
 │  │  - id           │     │  - id           │     │  - id           │      │
-│  │  - file_id      │     │  - topic_id     │     │  - topic_id     │      │
-│  │  - index        │     │  - index        │     │  - question     │      │
-│  │  - title        │     │  - title        │     │  - options      │      │
-│  │  - type (CORE/  │     │  - metadata     │     │  - answer       │      │
-│  │    SUPPORTING)  │     └─────────────────┘     └─────────────────┘      │
-│  └────────┬────────┘                                                       │
-│           │ 1:N                                                             │
+│  │  - file_id      │     │  - topic_id     │     │  - sub_topic_id │      │
+│  │  - index        │     │  - index        │     │  - explanation  │      │
+│  │  - title        │     │  - title        │     │  - quiz         │      │
+│  │  - page_start   │     │  - page_start   │     │  - created_at   │      │
+│  │  - page_end     │     │  - page_end     │     └─────────────────┘      │
+│  └────────┬────────┘     └─────────────────┘                               │
+│           │                                                                 │
+│           │ (via file_id)                                                   │
 │           ▼                                                                 │
 │  ┌─────────────────┐     ┌─────────────────┐                               │
-│  │ LearningSession │ 1:N │  TopicProgress  │                               │
+│  │ LearningSession │ 1:N │SubTopicProgress │                               │
 │  │                 ├────►│                 │                               │
 │  │  - id           │     │  - id           │                               │
 │  │  - user_id      │     │  - session_id   │                               │
-│  │  - file_id      │     │  - topic_id     │                               │
-│  │  - status       │     │  - status       │                               │
-│  │  - current_pos  │     │  - is_weak_point│                               │
-│  └─────────────────┘     │  - wrong_count  │                               │
-│                          └─────────────────┘                               │
+│  │  - file_id      │     │  - sub_topic_id │                               │
+│  │  - container_id │     │  - status       │                               │
+│  │  - status       │     │  - wrong_count  │                               │
+│  │  - current_pos  │     │  - completed_at │                               │
+│  └─────────────────┘     └─────────────────┘                               │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -346,14 +338,16 @@ User Action → Next.js API Route → Auth Middleware → Business Logic → Dat
 | -------------------- | ----------------------------- | ---------------------------------- |
 | `users`              | User accounts                 | 1:N with courses, sessions, quotas |
 | `courses`            | Course organization           | 1:N with files                     |
-| `files`              | PDF files                     | 1:N with topics, sessions          |
-| `topic_groups`       | Knowledge structure (level 1) | 1:N with sub_topics, tests         |
-| `sub_topics`         | Knowledge structure (level 2) | 1:N with sub_topic_progress        |
-| `topic_tests`        | Cached test questions         | N:1 with topic_groups              |
-| `learning_sessions`  | User learning state           | 1:N with progress records          |
-| `topic_progress`     | Topic completion status       | N:1 with sessions                  |
-| `sub_topic_progress` | Sub-topic confirmation        | N:1 with sessions                  |
-| `quotas`             | Usage limits                  | N:1 with users                     |
+| `files`              | PDF files + claude_file_id    | 1:N with topics, sessions          |
+| `topic_groups`       | Knowledge structure (level 1) | 1:N with sub_topics                |
+| `sub_topics`         | Knowledge structure (level 2) | 1:1 with sub_topic_cache, 1:N with qa_messages |
+| `learning_sessions`  | User learning state           | 1:N with sub_topic_progress        |
+| `sub_topic_progress` | SubTopic progress tracking    | N:1 with learning_sessions         |
+| `sub_topic_cache`    | Cached explanation + quiz     | 1:1 with sub_topics                |
+| `qa_messages`        | Q&A conversation history      | N:1 with sessions + sub_topics     |
+| `quotas`             | Usage limits (500/month)      | N:1 with users                     |
+| `quota_logs`         | Quota change history          | N:1 with users                     |
+| `ai_usage_logs`      | AI call tracking              | N:1 with users                     |
 | `admins`             | Admin accounts (separate)     | Independent                        |
 
 ### 5.3 Indexes
@@ -374,13 +368,18 @@ CREATE INDEX idx_files_structure_status ON files(structure_status);
 
 -- Learning session lookups
 CREATE UNIQUE INDEX idx_sessions_user_file ON learning_sessions(user_id, file_id);
-CREATE INDEX idx_sessions_user_status ON learning_sessions(user_id, status);
+CREATE INDEX idx_sessions_container ON learning_sessions(container_id);
 
 -- Progress queries
-CREATE INDEX idx_topic_progress_session ON topic_progress(session_id, status);
+CREATE INDEX idx_sub_topic_progress_session ON sub_topic_progress(session_id);
+CREATE INDEX idx_sub_topic_cache_sub_topic ON sub_topic_cache(sub_topic_id);
+
+-- Q&A lookups
+CREATE INDEX idx_qa_messages_session_sub ON qa_messages(session_id, sub_topic_id);
 
 -- Quota management
 CREATE INDEX idx_quotas_reset ON quotas(reset_at);
+CREATE INDEX idx_ai_usage_user_created ON ai_usage_logs(user_id, created_at DESC);
 ```
 
 ### 5.4 Cascade Delete Strategy
@@ -390,14 +389,12 @@ User DELETE
   └─► Course DELETE
         └─► File DELETE
               ├─► TopicGroup DELETE
-              │     ├─► SubTopic DELETE
-              │     │     └─► SubTopicProgress DELETE
-              │     ├─► TopicTest DELETE
-              │     └─► TopicProgress DELETE
-              ├─► ExtractedImage DELETE
+              │     └─► SubTopic DELETE
+              │           ├─► SubTopicCache DELETE
+              │           └─► QAMessage DELETE
               └─► LearningSession DELETE
-                    ├─► TopicProgress DELETE
-                    └─► SubTopicProgress DELETE
+                    ├─► SubTopicProgress DELETE
+                    └─► QAMessage DELETE
 ```
 
 ---
@@ -457,22 +454,23 @@ interface ApiErrorResponse {
 | GET    | `/api/files/:id`               | Get file details           |
 | DELETE | `/api/files/:id`               | Delete file                |
 | GET    | `/api/files/:id/download-url`  | Get download URL           |
-| GET    | `/api/files/:id/images`        | Get extracted images       |
+| GET    | `/api/files/:id/preview`       | Get PDF preview info       |
 | POST   | `/api/files/:id/extract/retry` | Retry structure extraction |
 
-#### AI Interactive Tutor (`/api/learn/*`)
+#### AI Interactive Tutor (`/api/learn/*`) - 边讲边测
 
-| Method | Endpoint                          | Description                   |
-| ------ | --------------------------------- | ----------------------------- |
-| POST   | `/api/files/:id/learn/start`      | Start/resume learning session |
-| GET    | `/api/learn/sessions/:id`         | Get session details           |
-| POST   | `/api/learn/sessions/:id/explain` | Get explanation (SSE)         |
-| POST   | `/api/learn/sessions/:id/confirm` | Confirm understanding         |
-| POST   | `/api/learn/sessions/:id/test`    | Start/get test                |
-| POST   | `/api/learn/sessions/:id/answer`  | Submit test answer            |
-| POST   | `/api/learn/sessions/:id/skip`    | Skip question                 |
-| POST   | `/api/learn/sessions/:id/next`    | Advance to next topic         |
-| POST   | `/api/learn/sessions/:id/pause`   | Pause session                 |
+| Method | Endpoint                              | Description                   |
+| ------ | ------------------------------------- | ----------------------------- |
+| POST   | `/api/files/:id/learn/start`          | Start/resume learning session |
+| GET    | `/api/learn/sessions/:id`             | Get session details           |
+| POST   | `/api/learn/sessions/:id/explain`     | Get explanation + quiz (SSE, cache supported) |
+| POST   | `/api/learn/sessions/:id/pass`        | Mark SubTopic as passed, advance to next |
+| POST   | `/api/learn/sessions/:id/fail`        | Record wrong answer           |
+| POST   | `/api/learn/sessions/:id/skip`        | Skip current SubTopic         |
+| POST   | `/api/learn/sessions/:id/relearn`     | Re-explain current SubTopic (update cache) |
+| GET    | `/api/learn/sessions/:id/progress`    | Get learning progress         |
+| GET    | `/api/learn/sessions/:id/qa/:subId`   | Get Q&A history for SubTopic  |
+| POST   | `/api/learn/sessions/:id/qa/:subId`   | Send Q&A message (SSE)        |
 
 #### Quota (`/api/quota/*`)
 
@@ -488,7 +486,6 @@ interface ApiErrorResponse {
 | GET    | `/api/admin/stats`           | System statistics       |
 | GET    | `/api/admin/users`           | List users              |
 | GET    | `/api/admin/cost`            | AI cost statistics      |
-| GET    | `/api/admin/cost/mathpix`    | Mathpix cost statistics |
 | GET    | `/api/admin/workers`         | Worker health status    |
 | POST   | `/api/admin/users/:id/quota` | Adjust user quota       |
 
@@ -500,7 +497,7 @@ interface ApiErrorResponse {
 | `AUTH_EMAIL_NOT_VERIFIED`   | 403         | Email not verified                   |
 | `AUTH_ACCOUNT_LOCKED`       | 403         | Account locked after failed attempts |
 | `COURSE_LIMIT_REACHED`      | 400         | Max 6 courses reached                |
-| `FILE_TOO_LARGE`            | 400         | File exceeds 200MB                   |
+| `FILE_TOO_LARGE`            | 400         | File exceeds 500MB                   |
 | `FILE_TOO_MANY_PAGES`       | 400         | File exceeds 500 pages               |
 | `FILE_DUPLICATE_NAME`       | 400         | File name already exists             |
 | `STORAGE_LIMIT_REACHED`     | 400         | 5GB storage limit reached            |
@@ -520,23 +517,18 @@ interface ApiErrorResponse {
 ├─────────────────────────────────────────────────────────────────────────────┤
 │                                                                             │
 │  ┌─────────────┐    ┌─────────────┐    ┌─────────────┐    ┌─────────────┐ │
-│  │   Upload    │    │   Trigger   │    │   Extract   │    │   Store     │ │
-│  │   Confirm   │───►│   Job       │───►│   Content   │───►│   Results   │ │
+│  │   Upload    │    │  Upload to  │    │  Claude     │    │   Store     │ │
+│  │   Confirm   │───►│  Claude     │───►│  File API   │───►│   Results   │ │
+│  │             │    │  File API   │    │  Analysis   │    │             │ │
 │  └─────────────┘    └─────────────┘    └──────┬──────┘    └─────────────┘ │
 │                                               │                            │
-│                           ┌───────────────────┼───────────────────┐        │
-│                           │                   │                   │        │
-│                           ▼                   ▼                   ▼        │
-│                    ┌─────────────┐    ┌─────────────┐    ┌─────────────┐  │
-│                    │  PyMuPDF    │    │  PDF Text   │    │   AI        │  │
-│                    │  (Images)   │    │  Extraction │    │  Analysis   │  │
-│                    └─────────────┘    └─────────────┘    └─────────────┘  │
-│                           │                                    │           │
-│                           ▼                                    ▼           │
-│                    ┌─────────────┐                     ┌─────────────────┐ │
-│                    │ R2 Storage  │                     │ TopicGroup +    │ │
-│                    │ (Images)    │                     │ SubTopic        │ │
-│                    └─────────────┘                     └─────────────────┘ │
+│                                               ▼                            │
+│                                   ┌─────────────────────┐                  │
+│                                   │  TopicGroup +       │                  │
+│                                   │  SubTopic + Pages   │                  │
+│                                   └─────────────────────┘                  │
+│                                                                             │
+│  Note: Claude File API supports native PDF OCR (scanned PDFs work directly)│
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -557,25 +549,29 @@ TopicGroup (总知识点)
         }
 ```
 
-### 7.3 Five-Layer Explanation Model
+### 7.3 SubTopic Explanation + Quiz
+
+讲解内容和深度由 `courseware-tutor` Skill 自行决定，每个 SubTopic 返回一份完整讲解 + 测试题：
 
 ```typescript
-interface SubTopicExplanation {
-  explanation: {
-    motivation: string // 为什么要学这个
-    intuition: string // 通俗解释
-    mathematics: string // 公式推导 (LaTeX)
-    theory: string // 严谨定义
-    application: string // 实际例子
+interface SubTopicContent {
+  explanation: string    // AI 生成的讲解内容 (markdown/latex)
+  quiz: {
+    question: string
+    options: string[]    // 4 个选项
+    correct_answers: number[]  // 正确答案索引 (2-3个)
+    explanation: string  // 答案解析
   }
 }
 ```
 
-### 7.4 Learning Session Flow
+缓存策略：首次生成后存入 `SubTopicCache`，再次进入直接读取，无需重复调用 AI。
+
+### 7.4 Learning Session Flow (边讲边测)
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│                           Learning Session Flow                              │
+│                     Learning Session Flow (Teach-Then-Test)                  │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │                                                                             │
 │  ┌─────────────┐                                                            │
@@ -588,29 +584,35 @@ interface SubTopicExplanation {
 │  │                    For Each TopicGroup                       │           │
 │  │  ┌─────────────────────────────────────────────────────┐    │           │
 │  │  │              For Each SubTopic                      │    │           │
-│  │  │  ┌───────────┐    ┌───────────┐    ┌───────────┐   │    │           │
-│  │  │  │ EXPLAINING│───►│ Show      │───►│ CONFIRMING│   │    │           │
-│  │  │  │           │    │ 5 Layers  │    │           │   │    │           │
-│  │  │  └───────────┘    └───────────┘    └─────┬─────┘   │    │           │
-│  │  │                                          │         │    │           │
-│  │  │                                 Click "I Understand"    │           │
-│  │  │                                          │         │    │           │
-│  │  │                                          ▼         │    │           │
-│  │  │                                   [Next SubTopic]  │    │           │
+│  │  │                                                     │    │           │
+│  │  │  ┌───────────┐    ┌───────────┐                    │    │           │
+│  │  │  │ Check     │───►│ Cache hit │───► Show cached    │    │           │
+│  │  │  │ Cache     │    │    ?      │     content        │    │           │
+│  │  │  └───────────┘    └─────┬─────┘                    │    │           │
+│  │  │                         │ No                        │    │           │
+│  │  │                         ▼                           │    │           │
+│  │  │               ┌─────────────────┐                  │    │           │
+│  │  │               │ Call AI (SSE)   │                  │    │           │
+│  │  │               │ Save to cache   │                  │    │           │
+│  │  │               └────────┬────────┘                  │    │           │
+│  │  │                        │                            │    │           │
+│  │  │                        ▼                            │    │           │
+│  │  │               ┌─────────────────┐                  │    │           │
+│  │  │               │  Quiz UI        │                  │    │           │
+│  │  │               │  (Multi-select) │                  │    │           │
+│  │  │               └────────┬────────┘                  │    │           │
+│  │  │                        │                            │    │           │
+│  │  │            ┌───────────┴───────────┐               │    │           │
+│  │  │            ▼                       ▼               │    │           │
+│  │  │     [All Correct]           [Wrong]                │    │           │
+│  │  │            │                       │               │    │           │
+│  │  │            ▼                       ▼               │    │           │
+│  │  │   [Next SubTopic]    [Show解析 + Retry/重新讲解]    │    │           │
+│  │  │                         (max 3 attempts)           │    │           │
+│  │  │                                                     │    │           │
 │  │  └─────────────────────────────────────────────────────┘    │           │
 │  │                                                              │           │
-│  │  All SubTopics confirmed                                     │           │
-│  │         │                                                    │           │
-│  │         ▼                                                    │           │
-│  │  ┌───────────┐    ┌───────────┐    ┌───────────┐            │           │
-│  │  │  TESTING  │───►│ Show Test │───►│  Submit   │            │           │
-│  │  │           │    │ Questions │    │  Answers  │            │           │
-│  │  └───────────┘    └───────────┘    └─────┬─────┘            │           │
-│  │                                          │                   │           │
-│  │                   Test Complete (CORE: 2/3, SUPPORTING: 1/1) │           │
-│  │                                          │                   │           │
-│  │                                          ▼                   │           │
-│  │                                   [Next TopicGroup]          │           │
+│  │  All SubTopics complete → [Next TopicGroup]                 │           │
 │  └──────────────────────────────────────────────────────────────┘           │
 │                                                                             │
 │  All TopicGroups Complete                                                   │
@@ -623,17 +625,20 @@ interface SubTopicExplanation {
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
-### 7.5 Test Pass Conditions
+### 7.5 Test Rules (Per SubTopic)
 
-| Topic Type | Questions | Pass Condition |
-| ---------- | --------- | -------------- |
-| CORE       | 3         | ≥ 2 correct    |
-| SUPPORTING | 1         | 1 correct      |
+| Rule | Description |
+| ---- | ----------- |
+| Quiz Format | 4 options (A/B/C/D), 2-3 correct answers |
+| Pass Condition | Must select ALL correct options (partial = fail) |
+| Max Attempts | 3 per question |
+| After 3 Fails | Can choose: 「重新讲解」(re-explain, costs quota, updates cache) or 「跳过」(skip) |
+| Quiz Judgment | Frontend local validation (no API call) |
+| Cache Behavior | First generation saves to cache; cache hit skips AI call |
 
-**Additional Rules:**
-
-- Single question skip: After 3 wrong attempts, can skip (counts as wrong)
-- Weak point marking: ≥ 3 wrong answers in a TopicGroup
+**Quiz Design Principles (enforced by Skill):**
+- ⚠️ No direct recall questions (answer cannot be copy-pasted from content)
+- ✅ Must require reasoning/application to new scenarios
 
 ---
 
@@ -743,7 +748,7 @@ interface LearningStore {
 
 | Job                     | Trigger               | Timeout | Purpose                              |
 | ----------------------- | --------------------- | ------- | ------------------------------------ |
-| `extract-pdf-structure` | File upload confirmed | 5 min   | Extract knowledge structure + images |
+| `extract-pdf-structure` | File upload confirmed | 5 min   | Extract knowledge structure via Claude File API |
 | `quota-reset`           | Daily cron            | 1 min   | Reset monthly quotas                 |
 
 ### 10.2 Structure Extraction Job Flow
@@ -754,11 +759,11 @@ export const extractPdfStructure = task({
   run: async (payload: { fileId: string }) => {
     // 1. Update status to PROCESSING
     // 2. Download PDF from Supabase Storage
-    // 3. Extract images (PyMuPDF) → Upload to R2
-    // 4. Extract text content
-    // 5. Batch AI analysis (120 pages/batch)
-    // 6. Create TopicGroup + SubTopic records
-    // 7. Update status to READY
+    // 3. Upload PDF to Claude File API (get claude_file_id)
+    // 4. Call Claude API to analyze PDF structure
+    // 5. Create TopicGroup + SubTopic records with page ranges
+    // 6. Update status to READY
+    // Note: Claude File API has native OCR support for scanned PDFs
   },
 })
 ```
@@ -790,32 +795,30 @@ export const extractPdfStructure = task({
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
-### 11.2 AI Services
+### 11.2 AI Services (Claude API + Skills)
 
 ```typescript
-// OpenRouter client configuration
-const aiClient = {
-  baseURL: 'https://openrouter.ai/api/v1',
-  model: 'anthropic/claude-3.5-sonnet',
-  maxTokens: 4096,
-}
+import Anthropic from '@anthropic-ai/sdk'
 
-// Mathpix client configuration
-const mathpixClient = {
-  baseURL: 'https://api.mathpix.com/v3',
-  formats: ['latex_simplified'],
-  costPerRequest: 0.004, // USD
-}
-```
+// Claude client configuration
+const anthropic = new Anthropic()
 
-### 11.3 Cloudflare R2
+// Skill-based tutoring request
+const response = await anthropic.beta.messages.create({
+  model: 'claude-sonnet-4-20250514',
+  max_tokens: 4096,
+  betas: ['code-execution-2025-08-25', 'skills-2025-10-02', 'files-api-2025-04-14'],
+  container: {
+    skills: [{ type: 'custom', skill_id: TUTOR_SKILL_ID, version: 'latest' }],
+  },
+  messages: [...],
+})
 
-```typescript
-// Image storage paths
-const imagePath = `images/${fileId}/${pageNumber}_${imageIndex}.png`
-
-// Signed URL generation (1 hour expiry)
-const signedUrl = await r2Client.getSignedUrl(imagePath, { expiresIn: 3600 })
+// Container reuse for session continuity
+const followUp = await anthropic.beta.messages.create({
+  container: { id: response.container.id, skills: [...] },
+  messages: [...],
+})
 ```
 
 ---
@@ -828,7 +831,6 @@ const signedUrl = await r2Client.getSignedUrl(imagePath, { expiresIn: 3600 })
 | --------------- | ---------------------------- | --------------- |
 | AI Explanations | SSE streaming                | First byte < 2s |
 | PDF Loading     | Lazy loading + pagination    | < 1s per page   |
-| Image Loading   | Lazy loading + signed URLs   | < 500ms         |
 | Database        | Indexed queries + pagination | < 100ms         |
 | Static Assets   | CDN + caching                | Cache hit > 95% |
 
@@ -863,8 +865,8 @@ const cacheTimes = {
 | Frontend + API  | Vercel           | Next.js hosting  |
 | Database        | Supabase         | PostgreSQL       |
 | File Storage    | Supabase Storage | PDF files        |
-| Image Storage   | Cloudflare R2    | Extracted images |
 | Background Jobs | Trigger.dev      | Async processing |
+| AI Service      | Anthropic        | Claude API       |
 | Monitoring      | Sentry           | Error tracking   |
 
 ### 13.2 Environment Variables
@@ -879,16 +881,9 @@ NEXT_PUBLIC_SUPABASE_URL=
 NEXT_PUBLIC_SUPABASE_ANON_KEY=
 SUPABASE_SERVICE_ROLE_KEY=
 
-# AI Services
-OPENROUTER_API_KEY=
-MATHPIX_APP_ID=
-MATHPIX_APP_KEY=
-
-# Cloudflare R2
-R2_ACCOUNT_ID=
-R2_ACCESS_KEY_ID=
-R2_SECRET_ACCESS_KEY=
-R2_BUCKET_NAME=
+# AI Services (Claude API + Skills + File API)
+ANTHROPIC_API_KEY=
+TUTOR_SKILL_ID=
 
 # Trigger.dev
 TRIGGER_API_KEY=

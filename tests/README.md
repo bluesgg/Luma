@@ -1,212 +1,318 @@
-# Luma Tests
+# Luma Web - Test Suite
 
-This directory contains the test suite for the Luma project using Vitest.
+## Quick Start
 
-## Directory Structure
+```bash
+# Install dependencies
+pnpm install
+
+# Run all tests
+pnpm test
+
+# Run with coverage
+pnpm test:coverage
+
+# Run with UI
+pnpm test:ui
+
+# Run in watch mode
+pnpm test --watch
+```
+
+## Test Structure
 
 ```
 tests/
-├── setup.ts                          # Global test setup and mocks
-├── lib/                              # Library/utility tests
-│   ├── api-response.test.ts         # API response helpers
-│   ├── csrf.test.ts                 # CSRF token generation/validation
-│   ├── logger.test.ts               # Logger utility
-│   ├── query-client.test.ts         # TanStack Query configuration
-│   ├── rate-limit.test.ts           # Rate limiting utility
-│   └── validation.test.ts           # Zod validation schemas
-└── stores/                           # Zustand store tests
-    ├── learning-store.test.ts       # Learning state management
-    └── reader-store.test.ts         # PDF reader state management
+├── setup.ts                    # Global test configuration
+├── helpers/                    # Test utilities
+│   └── auth.ts                # Auth helper functions
+├── unit/                       # Unit tests
+│   └── lib/                   # Library function tests
+├── api/                        # API endpoint tests
+│   └── auth/                  # Auth API tests
+├── components/                 # Component tests
+│   └── auth/                  # Auth component tests
+├── integration/                # Integration tests
+└── e2e/                        # End-to-end tests (Playwright)
 ```
 
-## Running Tests
-
-### Run all tests
+## Running Specific Tests
 
 ```bash
-npm test
-```
+# Run single file
+pnpm test tests/api/auth/login.test.ts
 
-### Run tests in watch mode
+# Run all auth API tests
+pnpm test tests/api/auth/
 
-```bash
-npm test -- --watch
-```
+# Run all component tests
+pnpm test tests/components/
 
-### Run tests with coverage
+# Run tests matching pattern
+pnpm test -t "login"
+pnpm test -t "password"
 
-```bash
-npm test -- --coverage
-```
-
-### Run specific test file
-
-```bash
-npm test tests/lib/query-client.test.ts
-```
-
-### Run tests matching pattern
-
-```bash
-npm test -- --grep "API response"
-```
-
-## Writing Tests
-
-### Test File Template
-
-```typescript
-import { describe, it, expect, beforeEach } from 'vitest'
-
-describe('Feature Name', () => {
-  beforeEach(() => {
-    // Setup before each test
-  })
-
-  describe('Sub-feature', () => {
-    it('should do something', () => {
-      // Arrange
-      const input = 'test'
-
-      // Act
-      const result = functionToTest(input)
-
-      // Assert
-      expect(result).toBe('expected')
-    })
-  })
-})
-```
-
-### Testing Conventions
-
-1. **File Naming**: `*.test.ts` or `*.test.tsx`
-2. **Test Naming**: Use descriptive `it('should ...')` statements
-3. **Organization**: Group related tests in `describe` blocks
-4. **Isolation**: Each test should be independent
-5. **Mocking**: Use mocks from `setup.ts` or create local mocks
-
-### Mock Data
-
-Use pre-defined mock data from `setup.ts`:
-
-```typescript
-import { mockUser, mockCourse, mockFile } from './setup'
-
-it('should use mock data', () => {
-  expect(mockUser.email).toBe('test@example.com')
-})
+# Run tests in specific file matching pattern
+pnpm test tests/api/auth/login.test.ts -t "should login"
 ```
 
 ## Test Coverage
 
-View coverage report:
-
 ```bash
-npm test -- --coverage
+# Generate coverage report
+pnpm test:coverage
+
+# View coverage in browser
+# Opens ./coverage/index.html
 ```
 
-Coverage reports are generated in:
+## Test Guidelines
 
-- Terminal: Text format
-- `coverage/index.html`: Interactive HTML report
+### Writing Tests
+
+1. **Follow AAA Pattern**: Arrange, Act, Assert
+2. **Use Descriptive Names**: `it('should reject invalid email format', ...)`
+3. **One Assertion Per Test**: Focus on single behavior
+4. **Mock External Dependencies**: Database, API calls, etc.
+5. **Clean Up After Tests**: Use `beforeEach` and `afterEach`
+
+### Test Structure
+
+```typescript
+describe('Feature Name', () => {
+  beforeEach(() => {
+    // Setup before each test
+    vi.clearAllMocks();
+  });
+
+  afterEach(() => {
+    // Cleanup after each test
+  });
+
+  describe('Success Cases', () => {
+    it('should handle happy path', () => {
+      // Arrange
+      const input = 'test';
+
+      // Act
+      const result = myFunction(input);
+
+      // Assert
+      expect(result).toBe('expected');
+    });
+  });
+
+  describe('Error Cases', () => {
+    it('should handle errors', () => {
+      // Test error scenarios
+    });
+  });
+});
+```
+
+## Mocking
+
+### Mock Prisma
+
+```typescript
+import { vi } from 'vitest';
+import { prisma } from '@/lib/prisma';
+
+vi.mocked(prisma.user.create).mockResolvedValue({
+  id: 'user-123',
+  email: 'test@example.com',
+  // ...
+});
+```
+
+### Mock Next.js
+
+```typescript
+// Already mocked in tests/setup.ts
+// useRouter, usePathname, useSearchParams, cookies, headers
+```
+
+### Mock API Calls
+
+```typescript
+const mockFetch = vi.fn();
+global.fetch = mockFetch;
+
+mockFetch.mockResolvedValue({
+  ok: true,
+  json: async () => ({ success: true }),
+});
+```
+
+## Test Helpers
+
+### Create Test User
+
+```typescript
+import { createTestUser, deleteTestUser } from '@/tests/helpers/auth';
+
+const { user, password } = await createTestUser({
+  email: 'test@example.com',
+  emailVerified: true,
+});
+
+// Use in tests...
+
+await deleteTestUser(user.id);
+```
+
+### Create Mock Request
+
+```typescript
+import { createMockRequest } from '@/tests/helpers/auth';
+
+const request = createMockRequest('POST', {
+  email: 'test@example.com',
+  password: 'Test123!@#',
+});
+```
+
+## Common Test Patterns
+
+### Testing API Routes
+
+```typescript
+import { POST } from '@/app/api/auth/login/route';
+
+it('should login with valid credentials', async () => {
+  // Mock database
+  vi.mocked(prisma.user.findUnique).mockResolvedValue(mockUser);
+
+  // Create request
+  const request = new Request('http://localhost:3000/api/auth/login', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, password }),
+  });
+
+  // Call handler
+  const response = await POST(request);
+  const data = await response.json();
+
+  // Assert
+  expect(response.status).toBe(200);
+  expect(data.success).toBe(true);
+});
+```
+
+### Testing React Components
+
+```typescript
+import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+
+it('should update input value', async () => {
+  render(<LoginForm />);
+
+  const input = screen.getByTestId('email-input');
+  await userEvent.type(input, 'test@example.com');
+
+  expect(input).toHaveValue('test@example.com');
+});
+```
+
+### Testing Async Functions
+
+```typescript
+it('should hash password', async () => {
+  const password = 'Test123!@#';
+  const hash = await hashPassword(password);
+
+  expect(hash).toBeDefined();
+  expect(hash).not.toBe(password);
+});
+```
 
 ## Debugging Tests
 
-### Enable verbose output
+### Using console.log
+
+```typescript
+it('should debug test', () => {
+  console.log('Debug info:', someVariable);
+  expect(someVariable).toBe('expected');
+});
+```
+
+### Using Vitest UI
 
 ```bash
-npm test -- --reporter=verbose
+pnpm test:ui
+# Opens browser with interactive test runner
 ```
 
-### Run single test
-
-Add `.only` to focus on one test:
+### Running Single Test
 
 ```typescript
-it.only('should test this specific case', () => {
-  // ...
-})
+// Use .only to run single test
+it.only('should run only this test', () => {
+  // Test code
+});
+
+// Or describe.only for single suite
+describe.only('Feature', () => {
+  it('should test', () => {});
+});
 ```
 
-### Skip test temporarily
-
-Add `.skip` to skip a test:
+### Skip Tests
 
 ```typescript
-it.skip('should be fixed later', () => {
-  // ...
-})
+// Skip single test
+it.skip('should skip this test', () => {
+  // Test code
+});
+
+// Skip suite
+describe.skip('Feature', () => {
+  it('should skip all', () => {});
+});
 ```
 
-## CI/CD Integration
+## Continuous Integration
 
 Tests run automatically on:
-
+- `git commit` (pre-commit hook via Husky)
+- `git push` (GitHub Actions)
 - Pull requests
-- Commits to main branch
-- Pre-commit hooks (via Husky)
 
-## Best Practices
+## Troubleshooting
 
-1. **Test Behavior, Not Implementation**
-   - Focus on what the function does, not how it does it
-   - Tests should survive refactoring
+### Tests not found
+- Check file naming: `*.test.ts` or `*.test.tsx`
+- Check vitest.config.ts include pattern
 
-2. **Keep Tests Simple**
-   - One assertion per test when possible
-   - Clear setup and expectations
+### Mocks not working
+- Ensure `vi.clearAllMocks()` in `beforeEach`
+- Check mock path matches import path
+- Use `vi.mocked()` for type safety
 
-3. **Use Descriptive Names**
-   - Test names should explain what is being tested
-   - Include expected behavior in the name
+### Timeout errors
+- Check for missing `await` on promises
+- Increase timeout: `it('test', async () => {}, 10000)`
+- Check for infinite loops
 
-4. **Mock External Dependencies**
-   - Don't rely on external services
-   - Use mocks for database, API calls, etc.
-
-5. **Test Edge Cases**
-   - Empty inputs
-   - Null/undefined values
-   - Boundary conditions
-   - Error scenarios
-
-## Common Issues
-
-### Tests Fail After Clean Install
-
-```bash
-# Clear cache and reinstall
-rm -rf node_modules pnpm-lock.yaml
-pnpm install
-```
-
-### Mocks Not Working
-
-- Check `tests/setup.ts` for proper mock setup
-- Ensure mocks are imported before the modules being tested
-- Use `vi.clearAllMocks()` in `beforeEach`
-
-### Timeout Errors
-
-Increase timeout for slow tests:
-
-```typescript
-it('slow test', async () => {
-  // ...
-}, 10000) // 10 second timeout
-```
+### Type errors
+- Ensure proper TypeScript types
+- Use type assertions when needed: `as HTMLInputElement`
+- Check @types packages are installed
 
 ## Resources
 
 - [Vitest Documentation](https://vitest.dev/)
 - [Testing Library](https://testing-library.com/)
-- [TDD Best Practices](https://martinfowler.com/bliki/TestDrivenDevelopment.html)
+- [Testing Library User Events](https://testing-library.com/docs/user-event/intro)
+- [Jest DOM Matchers](https://github.com/testing-library/jest-dom)
 
-## Support
+## Phase 1 Test Summary
 
-For questions or issues with tests:
+See [PHASE1_TEST_SUMMARY.md](./PHASE1_TEST_SUMMARY.md) for detailed test coverage.
 
-1. Check this README
-2. Review existing test files for examples
-3. Consult the team's testing guidelines
+## Implementation Checklist
+
+See [../docs/PHASE1_IMPLEMENTATION_CHECKLIST.md](../docs/PHASE1_IMPLEMENTATION_CHECKLIST.md) for implementation guide.

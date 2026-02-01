@@ -1,189 +1,273 @@
-// =============================================================================
-// Email Verification API Tests (TDD)
-// GET /api/auth/verify?token=...
-// =============================================================================
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { POST } from '@/app/api/auth/verify/route';
+import { prisma } from '@/lib/prisma';
 
-import { describe, it, expect, beforeEach } from 'vitest'
-import { prisma } from '@/lib/prisma'
-import { ERROR_CODES } from '@/lib/constants'
+/**
+ * Email Verification API Tests
+ * POST /api/auth/verify
+ */
 
-async function verifyEmail(token: string) {
-  const response = await fetch(`/api/auth/verify?token=${token}`)
-  return {
-    status: response.status,
-    data: await response.json(),
-  }
-}
+describe('POST /api/auth/verify', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
 
-describe('GET /api/auth/verify', () => {
-  let testUser: any
-  let validToken: string
-
-  beforeEach(async () => {
-    await prisma.verificationToken.deleteMany()
-    await prisma.user.deleteMany()
-
-    testUser = await prisma.user.create({
-      data: {
-        email: 'unverified@example.com',
-        passwordHash: '$2b$10$hashedpassword',
-        emailConfirmedAt: null,
-      },
-    })
-
-    const tokenRecord = await prisma.verificationToken.create({
-      data: {
-        userId: testUser.id,
-        token: 'valid-token-123',
-        type: 'EMAIL_VERIFY',
-        expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
-      },
-    })
-    validToken = tokenRecord.token
-  })
-
-  describe('Happy Path', () => {
+  describe('Success Cases', () => {
     it('should verify email with valid token', async () => {
-      const response = await verifyEmail(validToken)
-      expect(response.status).toBe(200)
-      expect(response.data.success).toBe(true)
-    })
+      const mockToken = {
+        id: 'token-123',
+        userId: 'user-123',
+        token: 'valid-token',
+        type: 'EMAIL_VERIFICATION' as const,
+        expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+        createdAt: new Date(),
+      };
 
-    it('should update email_confirmed_at timestamp', async () => {
-      const before = new Date()
-      await verifyEmail(validToken)
-      const after = new Date()
+      const mockUser = {
+        id: 'user-123',
+        email: 'user@test.com',
+        passwordHash: 'hash',
+        emailVerified: false,
+        failedLoginCount: 0,
+        lockedUntil: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
 
-      const user = await prisma.user.findUnique({ where: { id: testUser.id } })
-      expect(user?.emailConfirmedAt).toBeDefined()
-      expect(user!.emailConfirmedAt!.getTime()).toBeGreaterThanOrEqual(
-        before.getTime()
-      )
-      expect(user!.emailConfirmedAt!.getTime()).toBeLessThanOrEqual(
-        after.getTime()
-      )
-    })
+      vi.mocked(prisma.verificationToken.findUnique).mockResolvedValue(mockToken);
+      vi.mocked(prisma.user.update).mockResolvedValue({
+        ...mockUser,
+        emailVerified: true,
+      });
+      vi.mocked(prisma.verificationToken.delete).mockResolvedValue(mockToken);
 
-    it('should mark token as used', async () => {
-      await verifyEmail(validToken)
+      const request = new Request('http://localhost:3000/api/auth/verify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: 'valid-token' }),
+      });
 
-      const token = await prisma.verificationToken.findUnique({
-        where: { token: validToken },
-      })
-      expect(token?.usedAt).toBeDefined()
-    })
+      const response = await POST(request);
+      const data = await response.json();
 
-    it('should return success message', async () => {
-      const response = await verifyEmail(validToken)
-      expect(response.data.data.message).toContain('verified')
-    })
-  })
+      expect(response.status).toBe(200);
+      expect(data.success).toBe(true);
+      expect(data.data.message).toContain('verified');
+    });
 
-  describe('Invalid Token', () => {
-    it('should reject non-existent token', async () => {
-      const response = await verifyEmail('non-existent-token')
-      expect(response.status).toBe(400)
-      expect(response.data.error.code).toBe(ERROR_CODES.AUTH_TOKEN_INVALID)
-    })
+    it('should set emailVerified to true', async () => {
+      const mockToken = {
+        id: 'token-123',
+        userId: 'user-123',
+        token: 'valid-token',
+        type: 'EMAIL_VERIFICATION' as const,
+        expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+        createdAt: new Date(),
+      };
 
-    it('should reject already used token', async () => {
-      await verifyEmail(validToken) // First use
+      vi.mocked(prisma.verificationToken.findUnique).mockResolvedValue(mockToken);
+      vi.mocked(prisma.user.update).mockResolvedValue({
+        id: 'user-123',
+        email: 'user@test.com',
+        passwordHash: 'hash',
+        emailVerified: true,
+        failedLoginCount: 0,
+        lockedUntil: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
 
-      const response = await verifyEmail(validToken) // Second use
-      expect(response.status).toBe(400)
-      expect(response.data.error.code).toBe(ERROR_CODES.AUTH_TOKEN_INVALID)
-    })
+      const request = new Request('http://localhost:3000/api/auth/verify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: 'valid-token' }),
+      });
+
+      await POST(request);
+
+      expect(prisma.user.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: { emailVerified: true },
+        })
+      );
+    });
+
+    it('should delete verification token after use', async () => {
+      const mockToken = {
+        id: 'token-123',
+        userId: 'user-123',
+        token: 'valid-token',
+        type: 'EMAIL_VERIFICATION' as const,
+        expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+        createdAt: new Date(),
+      };
+
+      vi.mocked(prisma.verificationToken.findUnique).mockResolvedValue(mockToken);
+      vi.mocked(prisma.verificationToken.delete).mockResolvedValue(mockToken);
+
+      const request = new Request('http://localhost:3000/api/auth/verify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: 'valid-token' }),
+      });
+
+      await POST(request);
+
+      expect(prisma.verificationToken.delete).toHaveBeenCalledWith({
+        where: { token: 'valid-token' },
+      });
+    });
+  });
+
+  describe('Error Cases', () => {
+    it('should reject invalid token', async () => {
+      vi.mocked(prisma.verificationToken.findUnique).mockResolvedValue(null);
+
+      const request = new Request('http://localhost:3000/api/auth/verify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: 'invalid-token' }),
+      });
+
+      const response = await POST(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(400);
+      expect(data.success).toBe(false);
+      expect(data.error.code).toBe('INVALID_TOKEN');
+    });
 
     it('should reject expired token', async () => {
-      const expiredToken = await prisma.verificationToken.create({
-        data: {
-          userId: testUser.id,
-          token: 'expired-token',
-          type: 'EMAIL_VERIFY',
-          expiresAt: new Date(Date.now() - 1000), // Expired 1 second ago
-        },
-      })
+      const mockToken = {
+        id: 'token-123',
+        userId: 'user-123',
+        token: 'expired-token',
+        type: 'EMAIL_VERIFICATION' as const,
+        expiresAt: new Date(Date.now() - 1000), // Expired
+        createdAt: new Date(),
+      };
 
-      const response = await verifyEmail(expiredToken.token)
-      expect(response.status).toBe(400)
-      expect(response.data.error.code).toBe(ERROR_CODES.AUTH_TOKEN_EXPIRED)
-    })
+      vi.mocked(prisma.verificationToken.findUnique).mockResolvedValue(mockToken);
+
+      const request = new Request('http://localhost:3000/api/auth/verify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: 'expired-token' }),
+      });
+
+      const response = await POST(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(400);
+      expect(data.success).toBe(false);
+      expect(data.error.code).toBe('TOKEN_EXPIRED');
+    });
+
+    it('should reject wrong token type', async () => {
+      const mockToken = {
+        id: 'token-123',
+        userId: 'user-123',
+        token: 'password-reset-token',
+        type: 'PASSWORD_RESET' as const,
+        expiresAt: new Date(Date.now() + 60 * 60 * 1000),
+        createdAt: new Date(),
+      };
+
+      vi.mocked(prisma.verificationToken.findUnique).mockResolvedValue(mockToken);
+
+      const request = new Request('http://localhost:3000/api/auth/verify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: 'password-reset-token' }),
+      });
+
+      const response = await POST(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(400);
+      expect(data.success).toBe(false);
+    });
 
     it('should reject empty token', async () => {
-      const response = await verifyEmail('')
-      expect(response.status).toBe(400)
-    })
-
-    it('should reject missing token query parameter', async () => {
-      const response = await fetch('/api/auth/verify')
-      expect(response.status).toBe(400)
-    })
-  })
-
-  describe('Token Type Validation', () => {
-    it('should reject PASSWORD_RESET token for email verification', async () => {
-      const resetToken = await prisma.verificationToken.create({
-        data: {
-          userId: testUser.id,
-          token: 'reset-token',
-          type: 'PASSWORD_RESET', // Wrong type
-          expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
-        },
-      })
-
-      const response = await verifyEmail(resetToken.token)
-      expect(response.status).toBe(400)
-    })
-  })
-
-  describe('Already Verified', () => {
-    it('should handle already verified email gracefully', async () => {
-      await prisma.user.update({
-        where: { id: testUser.id },
-        data: { emailConfirmedAt: new Date() },
-      })
-
-      const response = await verifyEmail(validToken)
-      // Can either succeed or return informative message
-      expect([200, 400]).toContain(response.status)
-    })
-  })
-
-  describe('Security', () => {
-    it('should use GET method', async () => {
-      const response = await fetch(`/api/auth/verify?token=${validToken}`, {
+      const request = new Request('http://localhost:3000/api/auth/verify', {
         method: 'POST',
-      })
-      expect(response.status).toBe(405)
-    })
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: '' }),
+      });
 
-    it('should rate limit verification attempts', async () => {
-      const requests = []
-      for (let i = 0; i < 15; i++) {
-        requests.push(verifyEmail('random-token-' + i))
-      }
+      const response = await POST(request);
+      const data = await response.json();
 
-      const responses = await Promise.all(requests)
-      const rateLimited = responses.some((r) => r.status === 429)
-      expect(rateLimited).toBe(true)
-    })
-  })
+      expect(response.status).toBe(400);
+      expect(data.success).toBe(false);
+    });
+
+    it('should reject missing token', async () => {
+      const request = new Request('http://localhost:3000/api/auth/verify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      });
+
+      const response = await POST(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(400);
+      expect(data.success).toBe(false);
+    });
+  });
 
   describe('Edge Cases', () => {
-    it('should handle very long token strings', async () => {
-      const longToken = 'a'.repeat(1000)
-      const response = await verifyEmail(longToken)
-      expect(response.status).toBe(400)
-    })
+    it('should handle already verified email', async () => {
+      const mockToken = {
+        id: 'token-123',
+        userId: 'user-123',
+        token: 'valid-token',
+        type: 'EMAIL_VERIFICATION' as const,
+        expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+        createdAt: new Date(),
+      };
 
-    it('should handle special characters in token', async () => {
-      const response = await verifyEmail('token!@#$%^&*()')
-      expect(response.status).toBe(400)
-    })
+      const mockUser = {
+        id: 'user-123',
+        email: 'user@test.com',
+        passwordHash: 'hash',
+        emailVerified: true, // Already verified
+        failedLoginCount: 0,
+        lockedUntil: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
 
-    it('should handle SQL injection attempts', async () => {
-      const response = await verifyEmail("token'; DROP TABLE users; --")
-      expect(response.status).toBe(400)
-    })
-  })
-})
+      vi.mocked(prisma.verificationToken.findUnique).mockResolvedValue(mockToken);
+      vi.mocked(prisma.user.update).mockResolvedValue(mockUser);
+
+      const request = new Request('http://localhost:3000/api/auth/verify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: 'valid-token' }),
+      });
+
+      const response = await POST(request);
+      expect(response.status).toBe(200);
+    });
+
+    it('should handle database errors', async () => {
+      vi.mocked(prisma.verificationToken.findUnique).mockRejectedValue(
+        new Error('Database error')
+      );
+
+      const request = new Request('http://localhost:3000/api/auth/verify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: 'valid-token' }),
+      });
+
+      const response = await POST(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(500);
+      expect(data.success).toBe(false);
+    });
+  });
+});

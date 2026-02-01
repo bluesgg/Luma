@@ -1,17 +1,29 @@
+/**
+ * Client-Side Providers
+ *
+ * Wraps the app with necessary providers:
+ * - TanStack Query Provider
+ */
+
 'use client'
 
 import { QueryClientProvider } from '@tanstack/react-query'
-import { ReactQueryDevtools } from '@tanstack/react-query-devtools'
-import { queryClient } from '@/lib/query-client'
-import { I18nProvider } from '@/lib/i18n/context'
+import { getQueryClient } from '@/lib/query-client'
+import { useState } from 'react'
+
+// Only import devtools in development
+const ReactQueryDevtools =
+  process.env.NODE_ENV === 'development'
+    ? require('@tanstack/react-query-devtools').ReactQueryDevtools
+    : () => null
 
 export function Providers({ children }: { children: React.ReactNode }) {
+  const [queryClient] = useState(() => getQueryClient())
+
   return (
     <QueryClientProvider client={queryClient}>
-      <I18nProvider>
-        {children}
-        {process.env.NODE_ENV === 'development' && <ReactQueryDevtools />}
-      </I18nProvider>
+      {children}
+      {process.env.NODE_ENV === 'development' && <ReactQueryDevtools initialIsOpen={false} />}
     </QueryClientProvider>
   )
 }
